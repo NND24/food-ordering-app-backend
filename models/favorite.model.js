@@ -1,0 +1,20 @@
+const mongoose = require("mongoose");
+
+// Favorite schema
+
+var favoriteSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    require: true,
+  },
+  store: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
+      require: false,
+    },
+  ],
+});
+
+module.exports = mongoose.model("Favorite", favoriteSchema);
