@@ -31,6 +31,12 @@ const dishSchema = new mongoose.Schema(
         ref: "ToppingGroup",
       },
     ],
+    ingredients: [
+      {
+        ingredient: { type: mongoose.Schema.Types.ObjectId, ref: "Ingredient" },
+        quantity: { type: Number, required: true }, // dùng bao nhiêu unit cho 1 món
+      },
+    ],
     description: {
       type: String,
     },

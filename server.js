@@ -36,6 +36,11 @@ const paymentRoute = require("./routes/payment.route");
 const staffRoute = require("./routes/staff.routes");
 const shippingFeeRoute = require("./routes/shippingFee.routes");
 const storeRoute = require("./routes/store.routes");
+const ingredientCategoryRoute = require("./routes/ingredientCategory.routes");
+const ingredientRoute = require("./routes/ingredient.routes");
+const ingredientBatchRoute = require("./routes/ingredientBatch.routes");
+const wasteRoute = require("./routes/waste.routes");
+const unitRoute = require("./routes/unit.routes");
 
 const app = express();
 connectDB();
@@ -43,11 +48,7 @@ connectDB();
 app.use(morgan("dev"));
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://192.168.1.10:3000",
-    ],
+    origin: ["http://localhost:3000", "http://localhost:3001", "http://192.168.1.10:3000"],
     credentials: true,
   })
 );
@@ -106,6 +107,12 @@ app.use("/api/v1/payment", paymentRoute);
 app.use("/api/v1/staff", staffRoute);
 app.use("/api/v1/shipping-fee", shippingFeeRoute);
 app.use("/api/v1/store", storeRoute);
+app.use("/api/v1/ingredient-category", ingredientCategoryRoute);
+app.use("/api/v1/ingredient", ingredientRoute);
+wasteRoute;
+app.use("/api/v1/ingredient-batch", ingredientBatchRoute);
+app.use("/api/v1/waste", wasteRoute);
+app.use("/api/v1/unit", unitRoute);
 app.use(errorHandler);
 
 const server = http.createServer(app);
@@ -140,47 +147,40 @@ io.on("connection", (socket) => {
   socket.on("registerStore", (storeId) => {
     registerStoreSocket(storeId, socket.id);
     console.log(`Store ${storeId} connected with socket ${socket.id}`);
-    console.log(getStoreSockets())
+    console.log(getStoreSockets());
   });
 
   // Gửi thông báo đến tất cả các thiết bị của một user
-  socket.on(
-    "sendNotification",
-    async ({ userId, title, message, type, orderId }) => {
-      try {
-        console.log(
-          `[NOTIFICATION] Sending notification to user ${userId}: ${title}`
-        );
-        console.log("[NOTIFICATION]", {
-          userId,
-          title,
-          message,
-          type,
-          orderId,
-        });
-        const newNotification = new Notification({
-          userId,
-          title,
-          message,
-          type,
-          orderId,
-        });
-        await newNotification.save();
+  socket.on("sendNotification", async ({ userId, title, message, type, orderId }) => {
+    try {
+      console.log(`[NOTIFICATION] Sending notification to user ${userId}: ${title}`);
+      console.log("[NOTIFICATION]", {
+        userId,
+        title,
+        message,
+        type,
+        orderId,
+      });
+      const newNotification = new Notification({
+        userId,
+        title,
+        message,
+        type,
+        orderId,
+      });
+      await newNotification.save();
 
-        // Gửi thông báo đến tất cả các socket ids của userId
-        if (userSockets[userId]) {
-          userSockets[userId].forEach((socketId) => {
-            io.to(socketId).emit("newNotification", newNotification);
-            console.log(
-              `[NOTIFICATION] Notification sent to socket ID: ${socketId}`
-            );
-          });
-        }
-      } catch (error) {
-        console.error("Lỗi gửi thông báo:", error);
+      // Gửi thông báo đến tất cả các socket ids của userId
+      if (userSockets[userId]) {
+        userSockets[userId].forEach((socketId) => {
+          io.to(socketId).emit("newNotification", newNotification);
+          console.log(`[NOTIFICATION] Notification sent to socket ID: ${socketId}`);
+        });
       }
+    } catch (error) {
+      console.error("Lỗi gửi thông báo:", error);
     }
-  );
+  });
 
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
@@ -188,9 +188,7 @@ io.on("connection", (socket) => {
       const socketIndex = userSockets[userId].indexOf(socket.id);
       if (socketIndex !== -1) {
         userSockets[userId].splice(socketIndex, 1);
-        console.log(
-          `User ${userId} disconnected, removed socket ID: ${socket.id}`
-        );
+        console.log(`User ${userId} disconnected, removed socket ID: ${socket.id}`);
         break;
       }
     }

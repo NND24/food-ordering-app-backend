@@ -24,6 +24,7 @@ var orderItemSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    totalCost: { type: Number }, // giá vốn tính theo batch
     note: {
       type: String,
       required: false,

@@ -38,7 +38,8 @@ const orderSchema = new mongoose.Schema(
     finalTotal: {
       type: Number,
       required: true,
-    },
+    }, // tổng tiền khách trả
+    totalCost: { type: Number }, // tổng giá vốn theo batch
     deleted: {
       type: Boolean,
       default: false,
@@ -70,7 +71,6 @@ orderSchema.virtual("store", {
   foreignField: "_id",
   justOne: true,
 });
-
 
 function softDeletePlugin(schema, options) {
   const notDeletedCondition = { deleted: false };
