@@ -34,17 +34,14 @@ const createWaste = asyncHandler(async (req, res) => {
 // Lấy danh sách waste
 const getWasteList = asyncHandler(async (req, res) => {
   try {
-    const { from, to, reason, staff, page = 1, limit = 20 } = req.query;
+    const { from, to, reason, staff } = req.query;
     const filter = {};
 
     if (from && to) filter.date = { $gte: new Date(from), $lte: new Date(to) };
     if (reason) filter.reason = reason;
     if (staff) filter.staff = staff;
 
-    const waste = await Waste.find(filter)
-      .populate({ path: "ingredientBatch", populate: { path: "ingredient" } })
-      .skip((page - 1) * limit)
-      .limit(Number(limit));
+    const waste = await Waste.find(filter).populate({ path: "ingredientBatch", populate: { path: "ingredient" } });
 
     res.status(200).json({ success: true, data: waste });
   } catch (err) {

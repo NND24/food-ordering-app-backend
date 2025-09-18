@@ -18,9 +18,10 @@ const createUnit = asyncHandler(async (req, res) => {
 });
 
 // Lấy tất cả units
-const getUnits = asyncHandler(async (req, res) => {
+const getStoreUnits = asyncHandler(async (req, res) => {
   try {
-    const units = await Unit.find({ isActive: true });
+    let storeId = req.params.id;
+    const units = await Unit.find({ storeId: storeId });
     res.json({ success: true, data: units });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -64,7 +65,7 @@ const deleteUnit = asyncHandler(async (req, res) => {
 
 module.exports = {
   createUnit,
-  getUnits,
+  getStoreUnits,
   getUnitById,
   updateUnit,
   deleteUnit,
