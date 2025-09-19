@@ -4,54 +4,35 @@ const Rating = require("../models/rating.model");
 const asyncHandler = require("express-async-handler");
 const createError = require("../utils/createError");
 const { getPaginatedData } = require("../utils/paging");
-const {getStoreIdFromUser} = require("../utils/getStoreIdFromUser")
+const { getStoreIdFromUser } = require("../utils/getStoreIdFromUser");
 
 const getAllStoreRating = asyncHandler(async (req, res, next) => {
   try {
     const { storeId } = req.params;
-    const { limit, page, sort } = req.query;
 
-    const filterOptions = { storeId };
-
-    const result = await getPaginatedData(
-      Rating,
-      filterOptions,
-      [
-        {
-          path: "user",
-          select: "name avatar",
-        },
-        {
-          path: "order",
-          populate: [
-            {
-              path: "store",
-              select: "name",
-            },
-            {
-              path: "user",
-              select: "name avatar",
-            },
-            {
-              path: "items",
-              populate: {
-                path: "toppings",
-              },
-            },
-          ],
-        },
-      ],
-      parseInt(limit),
-      parseInt(page)
-    );
-
-    if (sort === "desc") {
-      result.data = result.data.sort((a, b) => b.ratingValue - a.ratingValue);
-    } else if (sort === "asc") {
-      result.data = result.data.sort((a, b) => a.ratingValue - b.ratingValue);
+    if (!storeId) {
+      return next(createError(400, "Store ID is required"));
     }
 
-    res.status(200).json(result);
+    const ratings = await Rating.find({ storeId })
+      .populate({
+        path: "user",
+        select: "name avatar",
+      })
+      .populate({
+        path: "order",
+        populate: [
+          { path: "store", select: "name" },
+          { path: "user", select: "name avatar" },
+          { path: "items", populate: { path: "toppings" } },
+        ],
+      });
+
+    res.status(200).json({
+      success: true,
+      message: "Ratings retrieved successfully",
+      data: ratings,
+    });
   } catch (error) {
     next(createError(500, error.message));
   }
@@ -172,7 +153,6 @@ const deleteStoreRating = asyncHandler(async (req, res, next) => {
   }
 });
 
-
 const getRatingsByStore = asyncHandler(async (req, res, next) => {
   try {
     const userId = req?.user?._id;
@@ -213,17 +193,17 @@ const replyToRating = asyncHandler(async (req, res, next) => {
     const { storeReply } = req.body;
 
     if (typeof storeReply !== "string") {
-      return next(createError(400,"Reply must be a string"))
+      return next(createError(400, "Reply must be a string"));
     }
 
     const rating = await Rating.findById(ratingId);
 
     if (!rating) {
-      return next(createError(404,"Rating not found"))
+      return next(createError(404, "Rating not found"));
     }
 
     if (rating.storeId.toString() !== storeId.toString()) {
-      return next(createError(403,"You are not authorized to reply to this rating"))
+      return next(createError(403, "You are not authorized to reply to this rating"));
     }
 
     rating.storeReply = storeReply;
@@ -250,5 +230,5 @@ module.exports = {
   editStoreRating,
   deleteStoreRating,
   getRatingsByStore,
-  replyToRating
+  replyToRating,
 };

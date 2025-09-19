@@ -2,7 +2,6 @@ const asyncHandler = require("express-async-handler");
 const Dish = require("../models/dish.model");
 const createError = require("../utils/createError");
 const successResponse = require("../utils/successResponse");
-const { getPaginatedData } = require("../utils/paging");
 const mongoose = require("mongoose");
 
 const getDishById = asyncHandler(async (req, res, next) => {
@@ -26,31 +25,22 @@ const getDishById = asyncHandler(async (req, res, next) => {
 
 const getDishesByStoreId = asyncHandler(async (req, res, next) => {
   const { store_id } = req.params;
-  const { name, limit, page } = req.query;
 
   if (!store_id) {
     return next(createError(400, "Store ID is required"));
   }
 
-  let filterOptions = { storeId: new mongoose.Types.ObjectId(store_id) };
-  if (name) filterOptions.name = { $regex: name, $options: "i" };
+  const dishes = await Dish.find({
+    storeId: new mongoose.Types.ObjectId(store_id),
+  })
+    .populate({ path: "category", select: "name" })
+    .populate({
+      path: "toppingGroups",
+      select: "name toppings",
+      populate: { path: "toppings", select: "name price" },
+    });
 
-  const result = await getPaginatedData(
-    Dish,
-    filterOptions,
-    [
-      { path: "category", select: "name" },
-      {
-        path: "toppingGroups",
-        select: "name toppings",
-        populate: { path: "toppings", select: "name price" },
-      },
-    ],
-    limit,
-    page
-  );
-
-  res.status(200).json(successResponse(result, "Dishes retrieved successfully"));
+  res.status(200).json(successResponse(dishes, "Dishes retrieved successfully"));
 });
 
 const createDish = asyncHandler(async (req, res, next) => {

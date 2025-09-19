@@ -16,7 +16,6 @@ const Notification = require("../models/notification.model");
 const Payment = require("../models/payment.model");
 const createError = require("../utils/createError");
 const asyncHandler = require("express-async-handler");
-const { getPaginatedData } = require("../utils/paging");
 const mongoose = require("mongoose");
 const { VNPay, ignoreLogger, ProductCode, VnpLocale, dateFormat, VerifyReturnUrl } = require("vnpay");
 const { select } = require("firebase-functions/params");
@@ -450,55 +449,34 @@ const getMonthlyOrderStats = asyncHandler(async (req, res, next) => {
 
 const getAllOrder = async (req, res) => {
   try {
-    const { status, limit, page, name } = req.query;
     const { storeId } = req.params;
 
-    let filterOptions = { storeId };
-
-    if (status) {
-      const statusArray = Array.isArray(status) ? status : status.split(",");
-      filterOptions.status = { $in: statusArray };
+    if (!storeId) {
+      return res.status(400).json({ success: false, message: "Store ID is required" });
     }
 
-    // Add search filter for customerName or customerPhonenumber
-    if (name && name.trim() !== "") {
-      const regex = new RegExp(name, "i");
-      filterOptions.$or = [{ customerName: regex }, { customerPhonenumber: regex }];
-    }
+    const orders = await Order.find({ storeId })
+      .populate({ path: "store", select: "name avatar" })
+      .populate({ path: "user", select: "name email avatar" })
+      .populate({
+        path: "items",
+        populate: [
+          {
+            path: "dish",
+            select: "name price image description",
+          },
+          {
+            path: "toppings",
+          },
+        ],
+      });
 
-    const response = await getPaginatedData(
-      Order,
-      filterOptions,
-      [
-        { path: "store", select: "name avatar" },
-        { path: "user", select: "name email avatar" },
-        {
-          path: "items",
-          populate: [
-            {
-              path: "dish",
-              select: "name price image description",
-            },
-            {
-              path: "toppings",
-            },
-          ],
-        },
-      ],
-      limit,
-      page
-    );
-
-    // Filter in-memory again for user.name
-    if (name && name.trim() !== "") {
-      const regex = new RegExp(name, "i");
-      response.data = response.data.filter(
-        (order) =>
-          order.user?.name?.match(regex) || order.customerName?.match(regex) || order.customerPhonenumber?.match(regex)
-      );
-    }
     res.setHeader("Cache-Control", "no-store");
-    res.status(200).json(response);
+    res.status(200).json({
+      success: true,
+      message: "Orders retrieved successfully",
+      data: orders,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

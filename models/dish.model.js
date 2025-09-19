@@ -14,7 +14,7 @@ const dishSchema = new mongoose.Schema(
     },
     category: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Category",
+      ref: "DishCategory",
     },
     storeId: {
       type: mongoose.Schema.Types.ObjectId,

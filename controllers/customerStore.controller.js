@@ -1,5 +1,5 @@
 const SystemCategory = require("../models/systemCategory.model");
-const Category = require("../models/category.model");
+const DishCategory = require("../models/dishCategory.model");
 const ToppingGroup = require("../models/toppingGroup.model");
 const Topping = require("../models/topping.model");
 const Store = require("../models/store.model");
@@ -31,7 +31,7 @@ const getAllStore = async (req, res) => {
       const systemCategoryIds = matchedSystemCategories.map((c) => c._id);
 
       // 2. Lấy danh sách storeId từ Category (nếu category name khớp keyword)
-      const matchedCategories = await Category.find({
+      const matchedCategories = await DishCategory.find({
         name: { $regex: kw, $options: "i" },
       }).select("store");
       const storeIdsFromCategory = matchedCategories.map((c) => c.store);
