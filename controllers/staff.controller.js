@@ -24,12 +24,7 @@ const addAnEmployee = asyncHandler(async (req, res, next) => {
     // 3. Kiểm tra role hợp lệ
     const validRoles = ["staff", "manager"];
     if (!role || !validRoles.includes(role)) {
-      return next(
-        createError(
-          400,
-          "Role không hợp lệ. Chỉ chấp nhận 'staff' hoặc 'manager'."
-        )
-      );
+      return next(createError(400, "Role không hợp lệ. Chỉ chấp nhận 'staff' hoặc 'manager'."));
     }
 
     // 4. Tạo user mới với role duy nhất
@@ -70,14 +65,10 @@ const addAnEmployee = asyncHandler(async (req, res, next) => {
 const getEmployeeById = asyncHandler(async (req, res, next) => {
   const { userId } = req.params;
 
-  const employee = await User.findById(userId).select(
-    "-password -refreshToken -otp -otpExpires"
-  );
+  const employee = await User.findById(userId).select("-password -refreshToken -otp -otpExpires");
   if (!employee) return next(createError(404, "Không tìm thấy nhân viên."));
 
-  return res
-    .status(200)
-    .json(successResponse(employee, "Lấy thông tin nhân viên thành công!"));
+  return res.status(200).json(successResponse(employee, "Lấy thông tin nhân viên thành công!"));
 });
 
 // Cập nhật thông tin nhân viên
@@ -95,9 +86,7 @@ const updateEmployee = asyncHandler(async (req, res, next) => {
   if (email && email !== employee.email) {
     const existingEmail = await User.findOne({ email });
     if (existingEmail) {
-      return next(
-        createError(400, "Email đã được sử dụng bởi người dùng khác.")
-      );
+      return next(createError(400, "Email đã được sử dụng bởi người dùng khác."));
     }
     employee.email = email;
   }
@@ -161,41 +150,26 @@ const deleteEmployee = asyncHandler(async (req, res, next) => {
   // ✅ Xóa nhân viên khỏi DB
   await User.findByIdAndDelete(userId);
 
-  return res
-    .status(200)
-    .json(successResponse(null, "Xóa nhân viên thành công!"));
+  return res.status(200).json(successResponse(null, "Xóa nhân viên thành công!"));
 });
 
 const getAllEmployeesInStore = asyncHandler(async (req, res, next) => {
   const { storeId } = req.params;
-  const { page = 1, limit = 10, search = "", role = "" } = req.query;
 
   const store = await Store.findById(storeId).populate("staff");
   if (!store) return next(createError(404, "Cửa hàng không tồn tại."));
 
   const employeeIds = store.staff.map((user) => user._id);
 
-  const roleFilter = role ? [role] : ["manager", "staff"];
-
   const queryFilter = {
     _id: { $in: employeeIds },
-    role: { $in: roleFilter },
-    name: { $regex: search, $options: "i" },
   };
 
-  const total = await User.countDocuments(queryFilter);
-
-  const employees = await User.find(queryFilter)
-    .select("avatar name role")
-    .skip((page - 1) * limit)
-    .limit(Number(limit));
+  const employees = await User.find(queryFilter).select("avatar name gender phonenumber role");
 
   res.status(200).json(
     successResponse(
       {
-        total,
-        currentPage: Number(page),
-        totalPages: Math.ceil(total / limit),
         employees,
       },
       "Danh sách nhân viên"
