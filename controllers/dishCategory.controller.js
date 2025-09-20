@@ -19,10 +19,10 @@ const getStoreCategories = asyncHandler(async (req, res, next) => {
 });
 
 const getCategoryById = asyncHandler(async (req, res, next) => {
-  const { category_id } = req.params;
+  const { categoryId } = req.params;
 
   // Truy vấn danh sách món ăn
-  const category = await DishCategory.findById(category_id);
+  const category = await DishCategory.findById(categoryId);
 
   if (!category) {
     return next(createError(404, "Category not found"));
@@ -33,7 +33,7 @@ const getCategoryById = asyncHandler(async (req, res, next) => {
 
 const createCategory = asyncHandler(async (req, res, next) => {
   const { storeId } = req.params;
-  const { name } = req.body;
+  const { name, description, isActive } = req.body;
 
   // Kiểm tra xem tên danh mục đã tồn tại trong cửa hàng chưa
   const existingCategory = await DishCategory.findOne({ name, store: storeId });
@@ -42,8 +42,10 @@ const createCategory = asyncHandler(async (req, res, next) => {
   }
 
   // Tạo danh mục mới
-  const newCategory = new Category({
+  const newCategory = new DishCategory({
     name,
+    description,
+    isActive,
     store: storeId,
   });
 
@@ -53,8 +55,8 @@ const createCategory = asyncHandler(async (req, res, next) => {
 });
 
 const updateCategoryById = asyncHandler(async (req, res, next) => {
-  const { category_id } = req.params;
-  const { name } = req.body;
+  const { categoryId } = req.params;
+  const { name, description, isActive } = req.body;
 
   // Validate input
   if (!name) {
@@ -63,8 +65,8 @@ const updateCategoryById = asyncHandler(async (req, res, next) => {
 
   // Find and update category
   const updatedCategory = await DishCategory.findByIdAndUpdate(
-    category_id,
-    { name },
+    categoryId,
+    { name, description, isActive },
     { new: true } // Return updated document
   );
 
@@ -75,11 +77,11 @@ const updateCategoryById = asyncHandler(async (req, res, next) => {
 });
 
 const deleteCategoryById = asyncHandler(async (req, res, next) => {
-  const { category_id } = req.params;
+  const { categoryId } = req.params;
 
   // Check if the category is used in any dish
   const dishesUsingCategory = await Dish.countDocuments({
-    category: category_id,
+    category: categoryId,
   });
 
   if (dishesUsingCategory > 0) {
@@ -90,7 +92,7 @@ const deleteCategoryById = asyncHandler(async (req, res, next) => {
   }
 
   // Find and delete category
-  const deletedCategory = await DishCategory.findByIdAndDelete(category_id);
+  const deletedCategory = await DishCategory.findByIdAndDelete(categoryId);
 
   if (!deletedCategory) {
     return next(createError(404, "Category not found"));

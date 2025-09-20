@@ -99,7 +99,7 @@ app.use("/api/v1/upload", uploadRoute);
 app.use("/api/v1/rating", ratingRoute);
 app.use("/api/v1/dish", dishRoute);
 app.use("/api/v1/topping", toppingRoute);
-app.use("/api/v1/category", dishCategoryRoute);
+app.use("/api/v1/dish-category", dishCategoryRoute);
 app.use("/api/v1/statistics", statisticsRoute);
 app.use("/api/v1/system-category", systemCategoryRoute);
 app.use("/api/v1/voucher", voucherRoute);

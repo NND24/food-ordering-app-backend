@@ -15,16 +15,16 @@ const router = express.Router();
 router.get("/store/:storeId", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), getStoreCategories);
 // router.get("/store/:storeId", getStoreCategories);
 
-router.get("/store/:category_id", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), getCategoryById);
-// router.get("/:category_id", getCategoryById);
+router.get("/:categoryId", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), getCategoryById);
+// router.get("/:categoryId", getCategoryById);
 
 router.post("/store/:storeId", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), createCategory);
 // router.post("/store/:storeId", createCategory);
 
-router.put("/:category_id", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), updateCategoryById);
-// router.put("/:category_id", updateCategoryById);
+router.put("/:categoryId", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), updateCategoryById);
+// router.put("/:categoryId", updateCategoryById);
 
-router.delete("/:category_id", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), deleteCategoryById);
-router.delete("/:category_id", deleteCategoryById);
+router.delete("/:categoryId", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), deleteCategoryById);
+router.delete("/:categoryId", deleteCategoryById);
 
 module.exports = router;
