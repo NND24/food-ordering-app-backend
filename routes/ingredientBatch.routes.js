@@ -2,6 +2,7 @@ const express = require("express");
 const {
   createBatch,
   getBatchesByIngredient,
+  getBatchById,
   getBatchesByStore,
   updateBatch,
   deleteBatch,
@@ -14,6 +15,8 @@ router.post("/", createBatch);
 
 // Lấy batch theo ingredient
 router.get("/ingredient/:ingredientId", getBatchesByIngredient);
+
+router.get("/:id", getBatchById);
 
 // Lấy batch theo store
 router.get("/store/:storeId", getBatchesByStore);
