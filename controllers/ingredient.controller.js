@@ -17,7 +17,7 @@ const createIngredient = asyncHandler(async (req, res) => {
 const getIngredientsByStore = asyncHandler(async (req, res) => {
   try {
     const { storeId } = req.params;
-    const ingredients = await Ingredient.find({ storeId }).populate("category");
+    const ingredients = await Ingredient.find({ storeId }).populate("category unit");
     res.status(200).json({ success: true, data: ingredients });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -28,7 +28,7 @@ const getIngredientsByStore = asyncHandler(async (req, res) => {
 const getIngredientById = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const ingredient = await Ingredient.findById(id).populate("category");
+    const ingredient = await Ingredient.findById(id).populate("category unit");
     if (!ingredient) return res.status(404).json({ success: false, message: "Ingredient not found" });
     res.status(200).json({ success: true, data: ingredient });
   } catch (error) {
