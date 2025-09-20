@@ -4,25 +4,14 @@ const Unit = require("../models/unit.model");
 // Tạo unit mới
 const createUnit = asyncHandler(async (req, res) => {
   try {
-    const { name, type, storeId } = req.body;
+    const { name, type } = req.body;
 
-    const exists = await Unit.findOne({ name, storeId });
+    const exists = await Unit.findOne({ name });
     if (exists) return res.status(400).json({ success: false, message: "Unit already exists" });
 
-    const unit = new Unit({ name, type, storeId });
+    const unit = new Unit({ name, type });
     await unit.save();
     res.status(201).json({ success: true, data: unit });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// Lấy tất cả units
-const getStoreUnits = asyncHandler(async (req, res) => {
-  try {
-    let storeId = req.params.id;
-    const units = await Unit.find({ storeId: storeId });
-    res.json({ success: true, data: units });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -65,7 +54,6 @@ const deleteUnit = asyncHandler(async (req, res) => {
 
 module.exports = {
   createUnit,
-  getStoreUnits,
   getUnitById,
   updateUnit,
   deleteUnit,
