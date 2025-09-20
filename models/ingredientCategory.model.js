@@ -9,6 +9,7 @@ const IngredientCategorySchema = new mongoose.Schema(
       required: true,
     },
     description: { type: String },
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

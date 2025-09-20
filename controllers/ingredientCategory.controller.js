@@ -4,8 +4,8 @@ const IngredientCategory = require("../models/ingredientCategory.model");
 // Tạo mới danh mục
 const createCategory = asyncHandler(async (req, res) => {
   try {
-    const { name, storeId, description } = req.body;
-    const category = new IngredientCategory({ name, storeId, description });
+    const { name, storeId, description, isActive } = req.body;
+    const category = new IngredientCategory({ name, storeId, description, isActive });
     await category.save();
     res.status(201).json({ success: true, data: category });
   } catch (error) {
@@ -40,8 +40,8 @@ const getCategoryById = asyncHandler(async (req, res) => {
 const updateCategory = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description } = req.body;
-    const category = await IngredientCategory.findByIdAndUpdate(id, { name, description }, { new: true });
+    const { name, description, isActive } = req.body;
+    const category = await IngredientCategory.findByIdAndUpdate(id, { name, description, isActive }, { new: true });
     if (!category) return res.status(404).json({ success: false, message: "Category not found" });
     res.status(200).json({ success: true, message: "Update successfully" });
   } catch (error) {
