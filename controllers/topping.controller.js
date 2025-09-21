@@ -25,6 +25,18 @@ const getStoreToppingGroups = asyncHandler(async (req, res, next) => {
   res.status(200).json(successResponse(groups, "Topping groups retrieved successfully"));
 });
 
+const getActiveStoreToppingGroups = asyncHandler(async (req, res, next) => {
+  const { storeId } = req.params;
+  if (!storeId) return next(createError(400, "Store ID is required"));
+
+  const groups = await ToppingGroup.find({ storeId, isActive: true }).populate({
+    path: "toppings",
+    select: "name price isActive",
+  });
+
+  res.status(200).json(successResponse(groups, "Topping groups retrieved successfully"));
+});
+
 // Lấy topping group theo ID
 const getToppingGroupById = asyncHandler(async (req, res, next) => {
   const { groupId } = req.params;
@@ -39,26 +51,35 @@ const getToppingGroupById = asyncHandler(async (req, res, next) => {
 // Tạo topping group
 const createToppingGroup = asyncHandler(async (req, res, next) => {
   const { storeId } = req.params;
-  const { name, onlyOnce } = req.body;
+  const { name, onlyOnce, isActive, toppings = [] } = req.body;
 
   if (!name) return next(createError(400, "Group name is required"));
 
   const store = await Store.findById(storeId);
   if (!store) return next(createError(404, "Store not found"));
 
-  const group = await ToppingGroup.create({ name, storeId, onlyOnce });
+  const group = await ToppingGroup.create({ name, storeId, onlyOnce, isActive, toppings });
   res.status(201).json(successResponse(group, "Topping group created successfully"));
 });
 
 // Cập nhật topping group
 const updateToppingGroup = asyncHandler(async (req, res, next) => {
   const { groupId } = req.params;
-  const { name, onlyOnce, isActive } = req.body;
+  const { name, onlyOnce, isActive, toppings } = req.body;
 
-  const group = await ToppingGroup.findByIdAndUpdate(groupId, { name, onlyOnce, isActive }, { new: true });
+  const group = await ToppingGroup.findById(groupId);
   if (!group) return next(createError(404, "Topping group not found"));
 
-  res.status(200).json(successResponse(group, "Topping group updated successfully"));
+  if (name !== undefined) group.name = name;
+  if (onlyOnce !== undefined) group.onlyOnce = onlyOnce;
+  if (isActive !== undefined) group.isActive = isActive;
+  if (Array.isArray(toppings)) group.toppings = toppings;
+
+  await group.save();
+
+  const populatedGroup = await group.populate("toppings");
+
+  res.status(200).json(successResponse(populatedGroup, "Topping group updated successfully"));
 });
 
 // Toggle isActive topping group
@@ -121,11 +142,11 @@ const getToppingById = asyncHandler(async (req, res, next) => {
 // Tạo topping
 const createTopping = asyncHandler(async (req, res, next) => {
   const { storeId } = req.params;
-  const { name, price, ingredients, toppingGroupIds } = req.body;
+  const { name, price, ingredients, isActive, toppingGroupIds } = req.body;
 
   if (!name || price == null) return next(createError(400, "Name and price are required"));
 
-  const topping = await Topping.create({ storeId, name, price, ingredients });
+  const topping = await Topping.create({ storeId, name, price, ingredients, isActive });
 
   // Nếu có groupIds, thêm topping vào các group
   if (toppingGroupIds && toppingGroupIds.length > 0) {
@@ -198,6 +219,7 @@ const addToppingsToGroup = asyncHandler(async (req, res, next) => {
 
 module.exports = {
   getStoreToppingGroups,
+  getActiveStoreToppingGroups,
   getToppingGroupById,
   createToppingGroup,
   updateToppingGroup,

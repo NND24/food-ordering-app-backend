@@ -17,6 +17,7 @@ const {
   toggleTopping,
   deleteTopping,
   addToppingsToGroup,
+  getActiveStoreToppingGroups,
 } = require("../controllers/topping.controller");
 
 const router = express.Router();
@@ -35,6 +36,13 @@ router.get(
   getStoreToppingGroups
 );
 
+router.get(
+  "/topping-group/store/:storeId/active",
+  authMiddleware,
+  roleAuthMiddleware(["owner", "staff", "manager"]),
+  getActiveStoreToppingGroups
+);
+
 // Lấy 1 group theo ID
 router.get(
   "/topping-group/:groupId",
@@ -46,14 +54,13 @@ router.get(
 // Tạo group
 router.post("/topping-group/:storeId", authMiddleware, roleAuthMiddleware(["owner", "manager"]), createToppingGroup);
 
-// Thêm topping vào group
+// Thêm toppings vào group
 router.post(
   "/topping-group/:groupId/toppings",
   authMiddleware,
   roleAuthMiddleware(["owner", "manager"]),
   addToppingsToGroup
 );
-
 // Cập nhật group
 router.put("/topping-group/:groupId", authMiddleware, roleAuthMiddleware(["owner", "manager"]), updateToppingGroup);
 
