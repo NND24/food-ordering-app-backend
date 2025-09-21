@@ -6,7 +6,7 @@ const toppingGroupSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    store: {
+    storeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Store",
       required: true,
@@ -21,6 +21,7 @@ const toppingGroupSchema = new mongoose.Schema(
         ref: "Topping",
       },
     ],
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

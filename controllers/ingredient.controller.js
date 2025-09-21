@@ -24,6 +24,34 @@ const getIngredientsByStore = asyncHandler(async (req, res) => {
   }
 });
 
+const getActiveIngredientsByStore = asyncHandler(async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const ingredients = await Ingredient.find({ storeId, isActive: true }).populate("category unit");
+    res.status(200).json({ success: true, data: ingredients });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+const getIngredientsByCategory = asyncHandler(async (req, res) => {
+  const { categoryId, storeId } = req.params;
+
+  if (!storeId) {
+    return res.status(400).json({ message: "storeId is required" });
+  }
+
+  const ingredients = await Ingredient.find({
+    storeId,
+    category: categoryId,
+    isActive: true,
+  })
+    .populate("unit", "name type") // populate đơn vị nếu cần
+    .sort({ name: 1 }); // sắp xếp theo tên
+
+  res.status(200).json({ data: ingredients });
+});
+
 // Lấy chi tiết nguyên liệu
 const getIngredientById = asyncHandler(async (req, res) => {
   try {
@@ -68,6 +96,8 @@ const deleteIngredient = asyncHandler(async (req, res) => {
 module.exports = {
   createIngredient,
   getIngredientsByStore,
+  getActiveIngredientsByStore,
+  getIngredientsByCategory,
   getIngredientById,
   updateIngredient,
   deleteIngredient,

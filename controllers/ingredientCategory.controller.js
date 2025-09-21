@@ -24,6 +24,17 @@ const getCategoriesByStore = asyncHandler(async (req, res) => {
   }
 });
 
+// Lấy danh sách danh mục active theo store
+const getActiveCategoriesByStore = asyncHandler(async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const categories = await IngredientCategory.find({ storeId, isActive: true });
+    res.json({ success: true, data: categories });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Lấy chi tiết 1 danh mục
 const getCategoryById = asyncHandler(async (req, res) => {
   try {
@@ -64,6 +75,7 @@ const deleteCategory = asyncHandler(async (req, res) => {
 module.exports = {
   createCategory,
   getCategoriesByStore,
+  getActiveCategoriesByStore,
   getCategoryById,
   updateCategory,
   deleteCategory,

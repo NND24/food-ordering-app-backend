@@ -2,9 +2,9 @@ const mongoose = require("mongoose");
 
 const toppingSchema = new mongoose.Schema(
   {
-    toppingGroupId: {
+    storeId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "ToppingGroup",
+      ref: "Store",
       required: true,
     },
     name: { type: String, required: true },
@@ -15,7 +15,9 @@ const toppingSchema = new mongoose.Schema(
         quantity: { type: Number, required: true }, // dùng bao nhiêu unit cho 1 món
       },
     ],
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
+
 module.exports = mongoose.model("Topping", toppingSchema);

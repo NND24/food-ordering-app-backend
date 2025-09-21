@@ -2,45 +2,94 @@ const express = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const roleAuthMiddleware = require("../middlewares/roleAuthMiddleware");
 const {
-    getStoreToppings,
-    getDishToppings,
-    getToppingById,
-    getToppingGroupById,
-    createToppingGroup,
-    createToppingInGroup,
-    updateToppingInGroup,
-    deleteToppingInGroup,
-    deleteToppingGroup,
-
+  // ToppingGroup
+  getStoreToppingGroups,
+  getToppingGroupById,
+  createToppingGroup,
+  updateToppingGroup,
+  toggleToppingGroup,
+  deleteToppingGroup,
+  // Topping
+  getStoreToppings,
+  getToppingById,
+  createTopping,
+  updateTopping,
+  toggleTopping,
+  deleteTopping,
+  addToppingsToGroup,
 } = require("../controllers/topping.controller");
 
-
 const router = express.Router();
-router.get("/store/:store_id",authMiddleware,roleAuthMiddleware(["owner", "staff", "manager"]), getStoreToppings);
-// router.get("/store/:store_id", getStoreToppings);
 
-router.get("/topping-group/:group_id",authMiddleware,roleAuthMiddleware(["owner", "staff",  "manager"]), getToppingGroupById);
-// router.get("/topping-group/:group_id", getToppingGroupById);
+/**
+ * ========================
+ * ToppingGroup Routes
+ * ========================
+ */
 
-router.get("/dish/:dish_id", authMiddleware,roleAuthMiddleware(["owner", "staff",  "manager"]), getDishToppings);
-// router.get("/dish/:dish_id", getDishToppings);
+// Lấy tất cả group + toppings theo store
+router.get(
+  "/topping-group/store/:storeId",
+  authMiddleware,
+  roleAuthMiddleware(["owner", "staff", "manager"]),
+  getStoreToppingGroups
+);
 
-router.get("/topping-group/:group_id",authMiddleware,roleAuthMiddleware(["owner",  "staff", "manager"]), getToppingById);
-// router.get("/:topping_id", getToppingById);
+// Lấy 1 group theo ID
+router.get(
+  "/topping-group/:groupId",
+  authMiddleware,
+  roleAuthMiddleware(["owner", "staff", "manager"]),
+  getToppingGroupById
+);
 
-router.post("/store/:store_id/topping-group", authMiddleware, roleAuthMiddleware(["owner",  "manager"]), createToppingGroup);
-// router.post("/store/:store_id/topping-group", createToppingGroup);
+// Tạo group
+router.post("/topping-group/:storeId", authMiddleware, roleAuthMiddleware(["owner", "manager"]), createToppingGroup);
 
-router.post("/topping-group/:group_id/topping", authMiddleware, roleAuthMiddleware(["owner",  "manager"]), createToppingInGroup);
-// router.post("/topping-group/:group_id/topping", createToppingInGroup);
+// Thêm topping vào group
+router.post(
+  "/topping-group/:groupId/toppings",
+  authMiddleware,
+  roleAuthMiddleware(["owner", "manager"]),
+  addToppingsToGroup
+);
 
-router.put("/topping-group/:group_id/topping/:topping_id", authMiddleware, roleAuthMiddleware(["owner",  "manager"]), updateToppingInGroup);
-// router.put("/topping-group/:group_id/topping/:topping_id", updateToppingInGroup);
+// Cập nhật group
+router.put("/topping-group/:groupId", authMiddleware, roleAuthMiddleware(["owner", "manager"]), updateToppingGroup);
 
-router.delete("/topping-group/:group_id/topping/:topping_id", authMiddleware, roleAuthMiddleware(["owner",  "manager"]), deleteToppingInGroup);
-// router.delete("/topping-group/:group_id/topping/:topping_id", deleteToppingInGroup);
+// Toggle isActive group
+router.put(
+  "/topping-group/:groupId/toggle-active",
+  authMiddleware,
+  roleAuthMiddleware(["owner", "manager"]),
+  toggleToppingGroup
+);
 
-router.delete("/topping-group/:group_id", authMiddleware, roleAuthMiddleware(["owner",  "manager"]), deleteToppingGroup);
-// router.delete("/topping-group/:group_id", deleteToppingGroup);
+// Xóa group
+router.delete("/topping-group/:groupId", authMiddleware, roleAuthMiddleware(["owner", "manager"]), deleteToppingGroup);
+
+/**
+ * ========================
+ * Topping Routes
+ * ========================
+ */
+
+// Lấy tất cả topping theo store
+router.get("/store/:storeId", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), getStoreToppings);
+
+// Lấy topping theo ID
+router.get("/:toppingId", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), getToppingById);
+
+// Tạo topping (có thể thêm vào nhiều group)
+router.post("/:storeId", authMiddleware, roleAuthMiddleware(["owner", "manager"]), createTopping);
+
+// Cập nhật topping
+router.put("/:toppingId", authMiddleware, roleAuthMiddleware(["owner", "manager"]), updateTopping);
+
+// Toggle isActive topping
+router.put("/:toppingId/toggle-active", authMiddleware, roleAuthMiddleware(["owner", "manager"]), toggleTopping);
+
+// Xóa topping
+router.delete("/:toppingId", authMiddleware, roleAuthMiddleware(["owner", "manager"]), deleteTopping);
 
 module.exports = router;

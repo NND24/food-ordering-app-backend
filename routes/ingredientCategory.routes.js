@@ -5,6 +5,7 @@ const {
   getCategoryById,
   updateCategory,
   deleteCategory,
+  getActiveCategoriesByStore,
 } = require("../controllers/ingredientCategory.controller");
 
 const router = express.Router();
@@ -14,6 +15,9 @@ router.post("/", createCategory);
 
 // Lấy danh sách danh mục theo store
 router.get("/store/:storeId", getCategoriesByStore);
+
+// Lấy danh sách danh mục active theo store
+router.get("/store/active/:storeId", getActiveCategoriesByStore);
 
 // Lấy chi tiết danh mục
 router.get("/:id", getCategoryById);
