@@ -16,8 +16,7 @@ const getDishById = asyncHandler(async (req, res, next) => {
     .select("name price description stockStatus image category toppingGroups ingredients")
     .populate({
       path: "toppingGroups",
-      select: "name toppings",
-      populate: { path: "toppings", select: "name price" },
+      populate: { path: "toppings" },
     })
     .populate("ingredients.ingredient");
 
@@ -40,8 +39,7 @@ const getDishesByStoreId = asyncHandler(async (req, res, next) => {
   })
     .populate({
       path: "toppingGroups",
-      select: "name toppings",
-      populate: { path: "toppings", select: "name price" },
+      populate: { path: "toppings" },
     })
     .populate("ingredients.ingredient");
 

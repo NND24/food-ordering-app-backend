@@ -51,7 +51,7 @@ const getToppingGroupById = asyncHandler(async (req, res, next) => {
 // Tạo topping group
 const createToppingGroup = asyncHandler(async (req, res, next) => {
   const { storeId } = req.params;
-  const { name, onlyOnce, isActive, toppings = [] } = req.body;
+  const { name, onlyOnce, isActive, toppings = [], dishIds } = req.body;
 
   if (!name) return next(createError(400, "Group name is required"));
 
@@ -59,6 +59,11 @@ const createToppingGroup = asyncHandler(async (req, res, next) => {
   if (!store) return next(createError(404, "Store not found"));
 
   const group = await ToppingGroup.create({ name, storeId, onlyOnce, isActive, toppings });
+
+  if (dishIds && dishIds.length > 0) {
+    await Dish.updateMany({ _id: { $in: dishIds } }, { $push: { toppingGroups: group._id } });
+  }
+
   res.status(201).json(successResponse(group, "Topping group created successfully"));
 });
 
