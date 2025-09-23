@@ -12,10 +12,6 @@ const dishSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
-    category: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "DishCategory",
-    },
     storeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Store",
@@ -42,7 +38,7 @@ const dishSchema = new mongoose.Schema(
     },
     stockStatus: {
       type: String,
-      enum: ["AVAILABLE", "OUT_OF_STOCK"],
+      enum: ["AVAILABLE", "INACTIVE", "OUT_OF_STOCK"],
       default: "AVAILABLE",
     },
   },

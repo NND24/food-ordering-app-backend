@@ -1,4 +1,5 @@
 const asyncHandler = require("express-async-handler");
+const DishGroup = require("../models/dishGroup.model");
 const Dish = require("../models/dish.model");
 const createError = require("../utils/createError");
 const successResponse = require("../utils/successResponse");
@@ -12,9 +13,13 @@ const getDishById = asyncHandler(async (req, res, next) => {
   }
 
   const dish = await Dish.findById(dish_id)
-    .select("name price description stockStatus image category toppingGroups")
-    .populate("toppingGroups", "name price")
-    .populate("category", "_id name");
+    .select("name price description stockStatus image category toppingGroups ingredients")
+    .populate({
+      path: "toppingGroups",
+      select: "name toppings",
+      populate: { path: "toppings", select: "name price" },
+    })
+    .populate("ingredients.ingredient");
 
   if (!dish) {
     return next(createError(404, "Dish not found"));
@@ -24,48 +29,50 @@ const getDishById = asyncHandler(async (req, res, next) => {
 });
 
 const getDishesByStoreId = asyncHandler(async (req, res, next) => {
-  const { store_id } = req.params;
+  const { storeId } = req.params;
 
-  if (!store_id) {
+  if (!storeId) {
     return next(createError(400, "Store ID is required"));
   }
 
   const dishes = await Dish.find({
-    storeId: new mongoose.Types.ObjectId(store_id),
+    storeId: new mongoose.Types.ObjectId(storeId),
   })
-    .populate({ path: "category", select: "name" })
     .populate({
       path: "toppingGroups",
       select: "name toppings",
       populate: { path: "toppings", select: "name price" },
-    });
+    })
+    .populate("ingredients.ingredient");
 
   res.status(200).json(successResponse(dishes, "Dishes retrieved successfully"));
 });
 
 const createDish = asyncHandler(async (req, res, next) => {
-  const { store_id } = req.params;
-  const { name, price, description, stockStatus, image, category, toppingGroups } = req.body;
+  const { storeId } = req.params;
+  const { name, price, description, stockStatus, image, toppingGroups, dishGroupIds, ingredients } = req.body;
 
-  if (!store_id) {
+  if (!storeId) {
     return next(createError(400, "Store ID is required"));
   }
   if (!name || !price) {
     return next(createError(400, "All fields are required"));
   }
 
-  const dish = new Dish({
+  const dish = await Dish.create({
     name,
     price,
     description,
     stockStatus,
     image,
-    category,
     toppingGroups,
-    storeId: new mongoose.Types.ObjectId(store_id),
+    ingredients,
+    storeId,
   });
 
-  await dish.save();
+  if (dishGroupIds && dishGroupIds.length > 0) {
+    await DishGroup.updateMany({ _id: { $in: dishGroupIds } }, { $push: { dishes: dish._id } });
+  }
 
   res.status(201).json(successResponse(dish, "Dish created successfully"));
 });
@@ -86,7 +93,7 @@ const changeStatus = asyncHandler(async (req, res, next) => {
 
 const updateDish = asyncHandler(async (req, res, next) => {
   const { dish_id } = req.params;
-  const { name, price, description, image, category, toppingGroups } = req.body;
+  const { name, price, description, stockStatus, image, toppingGroups, ingredients } = req.body;
 
   if (!dish_id) {
     return next(createError(400, "Dish ID is required"));
@@ -100,9 +107,10 @@ const updateDish = asyncHandler(async (req, res, next) => {
   dish.name = name || dish.name;
   dish.price = price || dish.price;
   dish.description = description || dish.description;
+  dish.stockStatus = stockStatus || dish.stockStatus;
   dish.image = image || dish.image;
-  dish.category = category || dish.category;
   dish.toppingGroups = toppingGroups || dish.toppingGroups;
+  dish.ingredients = ingredients || dish.ingredients;
 
   await dish.save();
 

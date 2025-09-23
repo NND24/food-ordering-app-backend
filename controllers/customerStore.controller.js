@@ -1,5 +1,5 @@
 const SystemCategory = require("../models/systemCategory.model");
-const DishCategory = require("../models/dishCategory.model");
+const DishCategory = require("../models/dishGroup.model");
 const ToppingGroup = require("../models/toppingGroup.model");
 const Topping = require("../models/topping.model");
 const Store = require("../models/store.model");

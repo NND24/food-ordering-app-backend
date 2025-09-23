@@ -34,7 +34,7 @@ const getActiveStoreToppingGroups = asyncHandler(async (req, res, next) => {
     select: "name price isActive",
   });
 
-  res.status(200).json(successResponse(groups, "Topping groups retrieved successfully"));
+  res.status(200).json(successResponse(groups, "Topping groups active retrieved successfully"));
 });
 
 // Lấy topping group theo ID
