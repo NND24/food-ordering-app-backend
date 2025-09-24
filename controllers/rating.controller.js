@@ -157,26 +157,9 @@ const getRatingsByStore = asyncHandler(async (req, res, next) => {
   try {
     const userId = req?.user?._id;
     const storeId = await getStoreIdFromUser(userId);
-    const { page, limit, replied, sort = "-createdAt" } = req.query;
-
-    const filterOptions = { storeId };
-
-    // Replied filter logic
-    if (replied === "true") {
-      filterOptions.storeReply = { $ne: "" };
-    } else if (replied === "false") {
-      filterOptions.storeReply = "";
-    }
 
     // Use your pagination helper
-    const result = await getPaginatedData(
-      Rating,
-      filterOptions,
-      "user order", // populate both
-      limit,
-      page,
-      sort
-    );
+    const result = await Rating.find({ storeId });
 
     res.status(200).json(result);
   } catch (error) {
