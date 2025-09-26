@@ -450,12 +450,21 @@ const getMonthlyOrderStats = asyncHandler(async (req, res, next) => {
 const getAllOrder = async (req, res) => {
   try {
     const { storeId } = req.params;
+    const { status } = req.query;
 
     if (!storeId) {
       return res.status(400).json({ success: false, message: "Store ID is required" });
     }
 
-    const orders = await Order.find({ storeId })
+    const filter = { storeId };
+
+    // Nếu có status query
+    if (status) {
+      const statusArray = status.split(","); // ["completed","delivered","done",...]
+      filter.status = { $in: statusArray };
+    }
+
+    const orders = await Order.find(filter)
       .populate({ path: "store", select: "name avatar" })
       .populate({ path: "user", select: "name email avatar" })
       .populate({
