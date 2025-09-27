@@ -13,7 +13,6 @@ var voucherSchema = new mongoose.Schema(
     },
     description: {
       type: String,
-      required: true,
     },
     discountType: {
       type: String,
@@ -60,7 +59,7 @@ var voucherSchema = new mongoose.Schema(
       type: String,
       enum: ["FOOD", "DELIVERY"],
       default: "FOOD",
-    }
+    },
   },
   { timestamps: true }
 );

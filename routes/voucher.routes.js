@@ -13,20 +13,10 @@ const {
 const router = express.Router();
 
 // Lấy danh sách voucher của 1 store
-router.get(
-  "/stores/:storeId/vouchers",
-  validateMongoDbId("storeId"),
-  authMiddleware,
-  getVouchersByStore
-);
+router.get("/stores/:storeId/vouchers", validateMongoDbId("storeId"), authMiddleware, getVouchersByStore);
 
 // Tạo voucher mới
-router.post(
-  "/stores/:storeId/vouchers",
-  validateMongoDbId("storeId"),
-  authMiddleware,
-  createVoucher
-);
+router.post("/stores/:storeId/vouchers", validateMongoDbId("storeId"), authMiddleware, createVoucher);
 
 // Toggle trạng thái hoạt động
 router.patch(

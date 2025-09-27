@@ -31,9 +31,7 @@ const getVouchersByStore = asyncHandler(async (req, res, next) => {
 
     allVouchers.forEach((voucher) => {
       const isWithinDate = voucher.startDate <= now && now <= voucher.endDate;
-      const notUsedUp = voucher.usageLimit
-        ? voucher.usedCount < voucher.usageLimit
-        : true;
+      const notUsedUp = voucher.usageLimit ? voucher.usedCount < voucher.usageLimit : true;
 
       if (voucher.isActive && isWithinDate && notUsedUp) {
         usable.push(voucher);
@@ -146,9 +144,7 @@ const toggleVoucherActiveStatus = asyncHandler(async (req, res, next) => {
 
     res.status(200).json({
       status: "success",
-      message: `Voucher has been ${
-        voucher.isActive ? "activated" : "deactivated"
-      } successfully.`,
+      message: `Voucher has been ${voucher.isActive ? "activated" : "deactivated"} successfully.`,
       data: voucher,
     });
   } catch (error) {
