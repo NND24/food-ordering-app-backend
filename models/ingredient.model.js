@@ -12,7 +12,11 @@ const IngredientSchema = new mongoose.Schema(
     },
     storeId: { type: mongoose.Schema.Types.ObjectId, ref: "Store", required: true },
     reorderLevel: { type: Number, default: 0 }, // ngưỡng cảnh báo tồn kho,
-    isActive: { type: Boolean, default: true },
+    status: {
+      type: String,
+      enum: ["ACTIVE", "OUT_OF_STOCK", "INACTIVE"],
+      default: "ACTIVE",
+    },
   },
   { timestamps: true }
 );

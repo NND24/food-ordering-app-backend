@@ -616,7 +616,7 @@ const reOrder = async (req, res) => {
       .populate("store")
       .populate({
         path: "items",
-        populate: [{ path: "dish", select: "stockStatus" }, { path: "toppings" }],
+        populate: [{ path: "dish", select: "status" }, { path: "toppings" }],
       });
 
     if (!order || !order.store) {
@@ -631,7 +631,7 @@ const reOrder = async (req, res) => {
     }
 
     // Kiểm tra món nào đã hết hàng
-    const hasOutOfStock = order.items.some((item) => item.dish?.stockStatus === "OUT_OF_STOCK");
+    const hasOutOfStock = order.items.some((item) => item.dish?.status === "OUT_OF_STOCK");
 
     if (hasOutOfStock) {
       return res.status(403).json({

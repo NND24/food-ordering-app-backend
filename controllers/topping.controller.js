@@ -147,11 +147,11 @@ const getToppingById = asyncHandler(async (req, res, next) => {
 // Tạo topping
 const createTopping = asyncHandler(async (req, res, next) => {
   const { storeId } = req.params;
-  const { name, price, ingredients, isActive, toppingGroupIds } = req.body;
+  const { name, price, ingredients, status, toppingGroupIds } = req.body;
 
   if (!name || price == null) return next(createError(400, "Name and price are required"));
 
-  const topping = await Topping.create({ storeId, name, price, ingredients, isActive });
+  const topping = await Topping.create({ storeId, name, price, ingredients, status });
 
   // Nếu có groupIds, thêm topping vào các group
   if (toppingGroupIds && toppingGroupIds.length > 0) {
@@ -164,9 +164,9 @@ const createTopping = asyncHandler(async (req, res, next) => {
 // Cập nhật topping
 const updateTopping = asyncHandler(async (req, res, next) => {
   const { toppingId } = req.params;
-  const { name, price, ingredients, isActive } = req.body;
+  const { name, price, ingredients, status } = req.body;
 
-  const topping = await Topping.findByIdAndUpdate(toppingId, { name, price, ingredients, isActive }, { new: true });
+  const topping = await Topping.findByIdAndUpdate(toppingId, { name, price, ingredients, status }, { new: true });
 
   if (!topping) return next(createError(404, "Topping not found"));
 

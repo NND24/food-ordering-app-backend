@@ -5,9 +5,9 @@ const IngredientBatch = require("../models/ingredientBatch.model");
 // Tạo waste record
 const createWaste = asyncHandler(async (req, res) => {
   try {
-    const { ingredientBatch, quantity, reason, otherReason, staff } = req.body;
+    const { ingredientBatchId, quantity, reason, otherReason, staff } = req.body;
 
-    const batch = await IngredientBatch.findById(ingredientBatch);
+    const batch = await IngredientBatch.findById(ingredientBatchId);
     if (!batch) return res.status(404).json({ success: false, message: "Batch not found" });
 
     if (quantity > batch.remainingQuantity) {
@@ -15,15 +15,17 @@ const createWaste = asyncHandler(async (req, res) => {
     }
 
     batch.remainingQuantity -= quantity;
+    if (batch.remainingQuantity === 0) batch.status = "finished";
     await batch.save();
 
-    const waste = await Waste.create({
-      ingredientBatch,
+    const waste = new Waste({
+      ingredientBatchId,
       quantity,
       reason,
       otherReason,
       staff,
     });
+    await waste.save();
 
     res.status(201).json({ success: true, data: waste });
   } catch (err) {

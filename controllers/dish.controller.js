@@ -13,7 +13,7 @@ const getDishById = asyncHandler(async (req, res, next) => {
   }
 
   const dish = await Dish.findById(dish_id)
-    .select("name price description stockStatus image category toppingGroups ingredients")
+    .select("name price description status image category toppingGroups ingredients")
     .populate({
       path: "toppingGroups",
       populate: { path: "toppings" },
@@ -48,7 +48,7 @@ const getDishesByStoreId = asyncHandler(async (req, res, next) => {
 
 const createDish = asyncHandler(async (req, res, next) => {
   const { storeId } = req.params;
-  const { name, price, description, stockStatus, image, toppingGroups, dishGroupIds, ingredients } = req.body;
+  const { name, price, description, status, image, toppingGroups, dishGroupIds, ingredients } = req.body;
 
   if (!storeId) {
     return next(createError(400, "Store ID is required"));
@@ -61,7 +61,7 @@ const createDish = asyncHandler(async (req, res, next) => {
     name,
     price,
     description,
-    stockStatus,
+    status,
     image,
     toppingGroups,
     ingredients,
@@ -83,7 +83,7 @@ const changeStatus = asyncHandler(async (req, res, next) => {
     return next(createError(404, "Dish not found"));
   }
 
-  dish.stockStatus = dish.stockStatus === "AVAILABLE" ? "OUT_OF_STOCK" : "AVAILABLE";
+  dish.status = dish.status === "ACTIVE" ? "OUT_OF_STOCK" : "ACTIVE";
   await dish.save();
 
   res.status(200).json(successResponse(null, "Dish on/off stock status changed successfully"));
@@ -91,7 +91,7 @@ const changeStatus = asyncHandler(async (req, res, next) => {
 
 const updateDish = asyncHandler(async (req, res, next) => {
   const { dish_id } = req.params;
-  const { name, price, description, stockStatus, image, toppingGroups, ingredients } = req.body;
+  const { name, price, description, status, image, toppingGroups, ingredients } = req.body;
 
   if (!dish_id) {
     return next(createError(400, "Dish ID is required"));
@@ -105,7 +105,7 @@ const updateDish = asyncHandler(async (req, res, next) => {
   dish.name = name || dish.name;
   dish.price = price || dish.price;
   dish.description = description || dish.description;
-  dish.stockStatus = stockStatus || dish.stockStatus;
+  dish.status = status || dish.status;
   dish.image = image || dish.image;
   dish.toppingGroups = toppingGroups || dish.toppingGroups;
   dish.ingredients = ingredients || dish.ingredients;

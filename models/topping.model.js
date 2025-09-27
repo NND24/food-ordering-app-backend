@@ -15,7 +15,11 @@ const toppingSchema = new mongoose.Schema(
         quantity: { type: Number, required: true }, // dùng bao nhiêu unit cho 1 món
       },
     ],
-    isActive: { type: Boolean, default: true },
+    status: {
+      type: String,
+      enum: ["ACTIVE", "INACTIVE", "OUT_OF_STOCK"],
+      default: "ACTIVE",
+    },
   },
   { timestamps: true }
 );
