@@ -165,7 +165,7 @@ const getAllEmployeesInStore = asyncHandler(async (req, res, next) => {
     _id: { $in: employeeIds },
   };
 
-  const employees = await User.find(queryFilter).select("avatar name gender phonenumber role");
+  const employees = await User.find(queryFilter).select("avatar name gender phonenumber role email");
 
   res.status(200).json(
     successResponse(
