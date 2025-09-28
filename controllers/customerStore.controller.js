@@ -215,14 +215,22 @@ const getAllDishInStore = async (req, res) => {
   try {
     const { storeId } = req.params;
 
-    const dishes = await Dish.find({ storeId }).populate("category", "name");
+    if (!storeId) {
+      return res.status(400).json({ success: false, message: "Thiếu storeId" });
+    }
+
+    const dishes = await Dish.find({ storeId });
+
+    if (!dishes || dishes.length === 0) {
+      return res.status(404).json({ success: false, message: "Không có món ăn nào trong cửa hàng" });
+    }
 
     res.status(200).json({
       status: true,
       data: dishes,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Lỗi khi lấy danh sách món ăn" });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -231,7 +239,6 @@ const getDetailDish = async (req, res) => {
     const { dishId } = req.params;
 
     const dish = await Dish.findById(dishId).populate([
-      { path: "category", select: "name" },
       {
         path: "toppingGroups",
       },

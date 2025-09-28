@@ -69,7 +69,7 @@ async function updateToppingStatus(toppingId) {
 }
 
 // chạy mỗi 1 tiếng "*/15 * * * * *" "0 * * * *"
-cron.schedule("*/15 * * * * *", async () => {
+cron.schedule("0 * * * *", async () => {
   console.log("🔄 Kiểm tra batch hết hạn...");
   const now = new Date();
 

@@ -15,6 +15,8 @@ const OrderShipInfo = require("../models/orderShipInfo.model");
 const OrderVoucher = require("../models/orderVoucher.model");
 const Voucher = require("../models/voucher.model");
 const UserVoucherUsage = require("../models/userVoucherUsage.model");
+const IngredientBatch = require("../models/ingredientBatch.model");
+const Ingredient = require("../models/ingredient.model");
 const { getStoreSockets, getIo } = require("../utils/socketManager");
 
 const storeSockets = getStoreSockets();
@@ -148,6 +150,47 @@ const getDetailCart = async (req, res) => {
   }
 };
 
+const calculateRequiredIngredients = async (dishId, quantity, toppings) => {
+  let required = {};
+
+  const dish = await Dish.findById(dishId).populate("ingredients.ingredient");
+  if (!dish) throw new Error("Dish not found");
+
+  // Dish ingredients
+  for (const ing of dish.ingredients) {
+    const total = ing.quantity * quantity;
+    required[ing.ingredient._id] = (required[ing.ingredient._id] || 0) + total;
+  }
+
+  // Topping ingredients
+  if (toppings.length > 0) {
+    const toppingDocs = await Topping.find({ _id: { $in: toppings } }).populate("ingredients.ingredient");
+    for (const topping of toppingDocs) {
+      for (const ing of topping.ingredients) {
+        const total = ing.quantity * quantity;
+        required[ing.ingredient._id] = (required[ing.ingredient._id] || 0) + total;
+      }
+    }
+  }
+
+  return required; // { ingredientId: totalRequiredQty }
+};
+
+const checkInventory = async (storeId, required) => {
+  for (const [ingredientId, qty] of Object.entries(required)) {
+    // Lấy tổng tồn kho ingredient từ tất cả batch
+    const batches = await IngredientBatch.find({ storeId, ingredient: ingredientId, status: "active" });
+    const totalRemaining = batches.reduce((sum, b) => sum + b.remainingQuantity, 0);
+
+    if (totalRemaining < qty) {
+      const ing = await Ingredient.findById(ingredientId);
+      throw new Error(
+        `Xin lỗi, hiện tại cửa hàng không đủ nguyên liệu để chế biến món này. Bạn vui lòng giảm số lượng`
+      );
+    }
+  }
+};
+
 const updateCart = async (req, res) => {
   try {
     const userId = req?.user?._id;
@@ -182,6 +225,11 @@ const updateCart = async (req, res) => {
           message: "Some toppings are not valid for this store",
         });
       }
+    }
+
+    if (quantity > 0) {
+      const requiredIngredients = await calculateRequiredIngredients(dishId, quantity, toppings);
+      await checkInventory(storeId, requiredIngredients);
     }
 
     // Find or create Cart
@@ -472,7 +520,7 @@ const completeCart = async (req, res) => {
       type: "order",
       status: "unread",
     });
-    console.log(storeId)
+    console.log(storeId);
 
     if (storeSockets[storeId]) {
       storeSockets[storeId].forEach((socketId) => {
@@ -496,13 +544,9 @@ const completeCart = async (req, res) => {
           },
           userId: userId,
         });
-        console.log(
-          `[NOTIFICATION] Notification sent to socket ID: ${socketId}`
-        );
+        console.log(`[NOTIFICATION] Notification sent to socket ID: ${socketId}`);
       });
     }
-
-    
 
     return res.status(201).json({
       success: true,
