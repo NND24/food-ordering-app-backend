@@ -48,7 +48,6 @@ const getIngredientsByCategory = asyncHandler(async (req, res) => {
   const ingredients = await Ingredient.find({
     storeId,
     category: categoryId,
-    status: "ACTIVE",
   })
     .populate("unit", "name type")
     .sort({ name: 1 });

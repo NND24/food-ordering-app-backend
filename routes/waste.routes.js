@@ -5,23 +5,27 @@ const {
   getWasteById,
   deleteWaste,
   getWasteReport,
+  updateWaste,
 } = require("../controllers/waste.controller");
+const authMiddleware = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
 // POST /waste
-router.post("/", createWaste);
+router.post("/", authMiddleware, createWaste);
 
 // GET /waste
-router.get("/", getWasteList);
+router.get("/store/:storeId", authMiddleware, getWasteList);
 
 // GET /waste/:id
-router.get("/:id", getWasteById);
+router.get("/:id", authMiddleware, getWasteById);
+
+router.put("/:id", authMiddleware, updateWaste);
 
 // DELETE /waste/:id
-router.delete("/:id", deleteWaste);
+router.delete("/:id", authMiddleware, deleteWaste);
 
 // GET /waste/report
-router.get("/report/summary", getWasteReport);
+router.get("/report/summary", authMiddleware, getWasteReport);
 
 module.exports = router;

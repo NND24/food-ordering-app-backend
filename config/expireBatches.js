@@ -69,7 +69,7 @@ async function updateToppingStatus(toppingId) {
 }
 
 // chạy mỗi 1 tiếng "*/15 * * * * *" "0 * * * *"
-cron.schedule("0 * * * *", async () => {
+cron.schedule("*/15 * * * * *", async () => {
   console.log("🔄 Kiểm tra batch hết hạn...");
   const now = new Date();
 
@@ -84,6 +84,7 @@ cron.schedule("0 * * * *", async () => {
     try {
       // tạo Waste
       await Waste.create({
+        storeId: batch.storeId,
         ingredientBatchId: batch._id,
         quantity: batch.remainingQuantity,
         reason: "expired",
@@ -133,3 +134,10 @@ cron.schedule("0 * * * *", async () => {
     }
   }
 });
+
+module.exports = {
+  getIngredientStock,
+  updateIngredientStatus,
+  updateDishStatus,
+  updateToppingStatus,
+};

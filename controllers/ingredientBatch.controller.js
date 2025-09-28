@@ -1,10 +1,15 @@
 const asyncHandler = require("express-async-handler");
 const IngredientBatch = require("../models/ingredientBatch.model");
+const Ingredient = require("../models/ingredient.model");
+const Dish = require("../models/dish.model");
+const Topping = require("../models/topping.model");
+const { updateIngredientStatus, updateDishStatus, updateToppingStatus } = require("../config/expireBatches");
 
 // Tạo batch mới
 const createBatch = asyncHandler(async (req, res) => {
   try {
-    const { ingredient, quantity, costPerUnit, expiryDate, storeId, supplierName, storageLocation } = req.body;
+    const { ingredient, quantity, costPerUnit, expiryDate, storeId, supplierName, storageLocation, batchCode } =
+      req.body;
 
     const batch = new IngredientBatch({
       ingredient,
@@ -16,11 +21,27 @@ const createBatch = asyncHandler(async (req, res) => {
       storeId,
       supplierName,
       storageLocation,
+      batchCode,
     });
 
     await batch.save();
+
+    // 🔄 Cập nhật trạng thái sau khi nhập batch thành công
+    await updateIngredientStatus(ingredient);
+
+    const dishes = await Dish.find({ "ingredients.ingredient": ingredient });
+    for (const dish of dishes) {
+      await updateDishStatus(dish._id);
+    }
+
+    const toppings = await Topping.find({ "ingredients.ingredient": ingredient });
+    for (const topping of toppings) {
+      await updateToppingStatus(topping._id);
+    }
+
     res.status(201).json({ success: true, data: batch });
   } catch (error) {
+    console.error("❌ Lỗi khi tạo batch:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -29,7 +50,12 @@ const createBatch = asyncHandler(async (req, res) => {
 const getBatchesByIngredient = asyncHandler(async (req, res) => {
   try {
     const { ingredientId } = req.params;
-    const batches = await IngredientBatch.find({ ingredient: ingredientId }).populate("ingredient").populate("storeId");
+    const batches = await IngredientBatch.find({ ingredient: ingredientId })
+      .populate({
+        path: "ingredient",
+        populate: { path: "unit" },
+      })
+      .populate("storeId");
     res.status(200).json({ success: true, data: batches });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -39,7 +65,12 @@ const getBatchesByIngredient = asyncHandler(async (req, res) => {
 const getBatchById = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params; // batch id
-    const batch = await IngredientBatch.findById(id).populate("ingredient").populate("storeId");
+    const batch = await IngredientBatch.findById(id)
+      .populate({
+        path: "ingredient",
+        populate: { path: "unit" },
+      })
+      .populate("storeId");
 
     if (!batch) {
       return res.status(404).json({ success: false, message: "Không tìm thấy lô nhập" });
