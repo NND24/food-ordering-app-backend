@@ -2,33 +2,34 @@ const express = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const roleAuthMiddleware = require("../middlewares/roleAuthMiddleware");
 const {
-    getRevenueSummary,
-    revenueByDay,
-    revenueByItem,
-    revenueByCategory,
-    orderSummaryStats,
-    orderStatusRate,
-    ordersOverTime,
-    orderStatusDistribution,
-    topSellingItems,
-    revenueContributionByItem,
-    ordersByTimeSlot,
-    newCustomers,
-    returningCustomerRate,
-    averageSpendingPerOrder,
-    voucherUsageSummary,
-    topUsedVouchers,
-    voucherRevenueImpact
-
+  getRevenueSummary,
+  revenueByPeriod,
+  revenueByItem,
+  revenueByDishGroup,
+  orderSummaryStats,
+  orderStatusRate,
+  ordersOverTime,
+  orderStatusDistribution,
+  topSellingItems,
+  revenueContributionByItem,
+  ordersByTimeSlot,
+  newCustomers,
+  returningCustomerRate,
+  averageSpendingPerOrder,
+  voucherUsageSummary,
+  topUsedVouchers,
+  voucherRevenueImpact,
+  analyzeBusinessResult,
 } = require("../controllers/statistics.controller");
 
 const router = express.Router();
 
 router.get("/revenue/summary", authMiddleware, getRevenueSummary);
-router.get("/revenue/by-day", authMiddleware, revenueByDay);
+router.get("/revenue/by-period", authMiddleware, revenueByPeriod);
 router.get("/revenue/reve", authMiddleware, getRevenueSummary);
 router.get("/revenue/by-item", authMiddleware, revenueByItem);
-router.get("/revenue/by-category", authMiddleware, revenueByCategory);
+router.get("/revenue/by-dish-group", authMiddleware, revenueByDishGroup);
+router.get("/revenue/analyze-business", authMiddleware, analyzeBusinessResult);
 
 router.get("/order/status-rate", authMiddleware, orderStatusRate);
 router.get("/order/summary", authMiddleware, orderSummaryStats);
