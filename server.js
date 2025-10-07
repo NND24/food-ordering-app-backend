@@ -45,6 +45,7 @@ const unitRoute = require("./routes/unit.routes");
 const app = express();
 connectDB();
 require("./config/expireBatches");
+require("./config/recommendData.cron");
 
 app.use(morgan("dev"));
 app.use(
