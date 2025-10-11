@@ -21,7 +21,7 @@ const {
   voucherRevenueImpact,
   analyzeBusinessResult,
 } = require("../controllers/statistics.controller");
-const { getRecommendedDishes } = require("../controllers/recommend.controller");
+const { getRecommendedDishes, improveVietnameseDescription } = require("../controllers/recommend.controller");
 
 const router = express.Router();
 
@@ -32,7 +32,8 @@ router.get("/revenue/by-item", authMiddleware, revenueByItem);
 router.get("/revenue/by-dish-group", authMiddleware, revenueByDishGroup);
 router.get("/revenue/analyze-business", authMiddleware, analyzeBusinessResult);
 
-router.get("/revenue/recommend-dish", authMiddleware, getRecommendedDishes);
+router.get("/recommend-dish", authMiddleware, getRecommendedDishes);
+router.post("/improve-description", authMiddleware, improveVietnameseDescription);
 
 router.get("/order/status-rate", authMiddleware, orderStatusRate);
 router.get("/order/summary", authMiddleware, orderSummaryStats);

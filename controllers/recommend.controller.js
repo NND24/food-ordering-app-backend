@@ -191,4 +191,36 @@ const getRecommendedDishes = asyncHandler(async (req, res) => {
   res.json({ success: true, store: store.name, data: suggestions });
 });
 
-module.exports = { getRecommendedDishes };
+const improveVietnameseDescription = async (englishCaption) => {
+  try {
+    const response = await hf.chatCompletion({
+      model: "zai-org/GLM-4.6",
+      messages: [
+        {
+          role: "system",
+          content:
+            "Bạn là chuyên gia ẩm thực, hãy dịch mô tả món ăn sang tiếng Việt và viết lại sao cho ngắn gọn, hấp dẫn như mô tả thực đơn trong nhà hàng.",
+        },
+        {
+          role: "user",
+          content: `Dịch và viết lại mô tả cho món ăn sau: "${englishCaption}"`,
+        },
+      ],
+      max_tokens: 300,
+      temperature: 0.8,
+    });
+
+    let text = response.choices?.[0]?.message?.content?.trim();
+    if (!text) return englishCaption;
+
+    // Xử lý bỏ ``` nếu model có bọc lại
+    text = text.replace(/```(?:json|text)?|```/g, "").trim();
+
+    return text;
+  } catch (err) {
+    console.error("❌ Lỗi khi cải thiện mô tả:", err.message);
+    return englishCaption;
+  }
+};
+
+module.exports = { getRecommendedDishes, improveVietnameseDescription };

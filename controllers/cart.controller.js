@@ -210,9 +210,8 @@ const updateCart = async (req, res) => {
     }
 
     // Validate toppings
-    let validToppingIds = new Set();
     if (toppings.length > 0) {
-      const toppingGroups = await ToppingGroup.find({ store: storeId }).select("_id");
+      const toppingGroups = await ToppingGroup.find({ storeId: storeId }).select("_id");
       const toppingGroupIds = toppingGroups.map((g) => g._id);
 
       const validToppings = await Topping.find({ toppingGroupId: { $in: toppingGroupIds } });

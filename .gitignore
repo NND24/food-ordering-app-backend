@@ -9,6 +9,7 @@ package-lock.json
 
 
 /ml/recommendDishDataset
+/ml/__pycache__
 
 # env files (can opt-in for commiting if needed)
 .env

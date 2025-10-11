@@ -15,7 +15,7 @@ const {
 const router = express.Router();
 
 router.get("/store/:storeId", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), getStoreDishGroups);
-router.get("/store/:storeId/active", authMiddleware, getActiveStoreDishGroups);
+router.get("/store/:storeId/active", getActiveStoreDishGroups);
 router.get("/:dishGroupId", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), getDishGroupById);
 
 router.post("/:storeId", authMiddleware, roleAuthMiddleware(["owner", "staff", "manager"]), createDishGroup);
