@@ -11,6 +11,369 @@ const asyncHandler = require("express-async-handler");
 const successResponse = require("../utils/successResponse");
 const createError = require("http-errors");
 const mongoose = require("mongoose");
+const { spawn } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+const axios = require("axios");
+
+const analyzeBusinessResult = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const year = parseInt(req.query.year) || moment().year();
+  const period = req.query.period || "month"; // day, week, month, year
+  const groupBy = req.query.groupBy || "day"; // chỉ dùng khi period = month → day | week
+  const date = req.query.date; // dùng khi period = day
+  const week = parseInt(req.query.week);
+
+  const store = await Store.findOne({
+    $or: [{ owner: userId }, { staff: userId }],
+  });
+  if (!store) {
+    return res.status(404).json({ success: false, message: "Store not found" });
+  }
+
+  const storeId = store._id;
+
+  // ---- 1️⃣ Xây matchStage theo loại period ----
+  const matchStage = {
+    storeId,
+    status: { $in: ["done", "delivered", "finished"] },
+  };
+
+  if (period === "day" && date) {
+    // 🟩 Nếu xem theo ngày → chỉ 1 ngày cụ thể
+    const startOfDay = moment(date).startOf("day").toDate();
+    const endOfDay = moment(date).endOf("day").toDate();
+    matchStage.createdAt = { $gte: startOfDay, $lte: endOfDay };
+  } else if (period === "week" && week && year) {
+    // 🟩 Nếu xem theo tuần → lấy đúng 7 ngày trong tuần đó
+    const startOfWeek = moment().year(year).week(week).startOf("week").toDate();
+    const endOfWeek = moment().year(year).week(week).endOf("week").toDate();
+    matchStage.createdAt = { $gte: startOfWeek, $lte: endOfWeek };
+  } else if (period === "month" && req.query.month) {
+    // 🟩 Nếu xem theo tháng → lấy toàn bộ tháng
+    const month = parseInt(req.query.month);
+    const startOfMonth = moment({ year, month: month - 1 })
+      .startOf("month")
+      .toDate();
+    const endOfMonth = moment({ year, month: month - 1 })
+      .endOf("month")
+      .toDate();
+    matchStage.createdAt = { $gte: startOfMonth, $lte: endOfMonth };
+  } else {
+    // 🟩 Mặc định: cả năm
+    matchStage.createdAt = {
+      $gte: moment({ year }).startOf("year").toDate(),
+      $lte: moment({ year }).endOf("year").toDate(),
+    };
+  }
+
+  // ---- 2️⃣ Định dạng thời gian nhóm ----
+  let dateFormat = "%Y-%m"; // mặc định theo tháng
+  if (period === "day") dateFormat = "%H:00"; // theo giờ
+  else if (period === "week") dateFormat = "%Y-%m-%d"; // theo ngày trong tuần
+  else if (period === "month") {
+    // 🟩 Nếu xem theo tháng → có thể nhóm theo ngày hoặc theo tuần
+    if (groupBy === "day") dateFormat = "%Y-%m-%d";
+    else if (groupBy === "week") dateFormat = "%Y-%U"; // tuần trong năm
+  } else if (period === "year") dateFormat = "%Y-%m"; // mỗi tháng
+
+  // ---- 3️⃣ Thực hiện aggregation ----
+  const statsRaw = await Order.aggregate([
+    { $match: matchStage },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            format: dateFormat,
+            date: "$createdAt",
+            timezone: "Asia/Ho_Chi_Minh",
+          },
+        },
+        revenue: { $sum: "$finalTotal" },
+        cost: { $sum: "$totalCost" },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  // ---- 3️⃣b. Thống kê món ăn bán chạy ----
+  const topDishesRaw = await OrderItem.aggregate([
+    // Nối sang Order để lọc theo cửa hàng & thời gian
+    {
+      $lookup: {
+        from: "orders",
+        localField: "orderId",
+        foreignField: "_id",
+        as: "order",
+      },
+    },
+    { $unwind: "$order" },
+    {
+      $match: {
+        "order.storeId": storeId,
+        "order.status": { $in: ["done", "delivered", "finished"] },
+        "order.createdAt": matchStage.createdAt, // lọc theo khoảng thời gian của đơn hàng
+      },
+    },
+    {
+      $group: {
+        _id: {
+          dishId: "$dishId",
+          timeGroup: {
+            $dateToString: {
+              format: dateFormat,
+              date: "$order.createdAt",
+              timezone: "Asia/Ho_Chi_Minh",
+            },
+          },
+        },
+        totalSold: { $sum: "$quantity" },
+        totalRevenue: { $sum: { $multiply: ["$quantity", "$price"] } },
+      },
+    },
+    {
+      $lookup: {
+        from: "dishes",
+        localField: "_id.dishId",
+        foreignField: "_id",
+        as: "dish",
+      },
+    },
+    { $unwind: "$dish" },
+    {
+      $project: {
+        _id: 0,
+        dishId: "$_id.dishId",
+        timeGroup: "$_id.timeGroup",
+        name: "$dish.name",
+        category: "$dish.category",
+        totalSold: 1,
+        totalRevenue: 1,
+      },
+    },
+    { $sort: { timeGroup: 1, totalSold: -1 } },
+  ]);
+
+  // Gom nhóm lại theo thời gian, chọn top 3 món mỗi khoảng
+  const groupedTopDishes = {};
+  for (const item of topDishesRaw) {
+    if (!groupedTopDishes[item.timeGroup]) groupedTopDishes[item.timeGroup] = [];
+    const list = groupedTopDishes[item.timeGroup];
+    if (list.length < 3) list.push(item);
+  }
+
+  // ---- 🔹 Chọn món nổi bật mỗi giai đoạn ----
+  for (const [period, dishes] of Object.entries(groupedTopDishes)) {
+    const avgSold = dishes.reduce((a, b) => a + b.totalSold, 0) / dishes.length;
+    const highlighted = dishes.filter((d) => d.totalSold >= avgSold * 1.5);
+    groupedTopDishes[period] = highlighted.length > 0 ? highlighted.slice(0, 3) : dishes.slice(0, 3);
+  }
+
+  // ---- 🔹 Giới hạn hiển thị quá nhiều ngày ----
+  const groupedTopDishesLimited = {};
+  const allPeriods = Object.keys(groupedTopDishes);
+
+  if (allPeriods.length > 10) {
+    const periodTotals = allPeriods.map((period) => ({
+      period,
+      totalRevenue: groupedTopDishes[period].reduce((a, b) => a + b.totalRevenue, 0),
+    }));
+
+    const topPeriods = periodTotals.sort((a, b) => b.totalRevenue - a.totalRevenue).slice(0, 5);
+
+    topPeriods.forEach(({ period }) => {
+      groupedTopDishesLimited[period] = groupedTopDishes[period];
+    });
+  } else {
+    Object.assign(groupedTopDishesLimited, groupedTopDishes);
+  }
+
+  // ---- 4️⃣ Chuẩn hóa dữ liệu theo từng loại period ----
+  let stats = statsRaw;
+
+  // 🕐 Nếu xem theo ngày → đảm bảo có đủ 24 giờ
+  if (period === "day") {
+    const allHours = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, "0")}:00`);
+
+    const normalizedStats = statsRaw.map((s) => {
+      let hour = s._id.trim();
+      if (/^\d{1,2}$/.test(hour)) hour = hour.padStart(2, "0") + ":00";
+      else if (/^\d{1,2}:\d{2}$/.test(hour)) hour = hour.padStart(5, "0");
+      else if (/^\d{1,2}h$/.test(hour)) hour = hour.replace("h", ":00").padStart(5, "0");
+      return { ...s, _id: hour };
+    });
+
+    stats = allHours.map((hour) => {
+      const existing = normalizedStats.find((s) => s._id === hour);
+      return existing || { _id: hour, revenue: 0, cost: 0 };
+    });
+  }
+
+  // 📅 Nếu xem theo tuần → đảm bảo có đủ 7 ngày
+  if (period === "week" && week && year) {
+    const startOfWeek = moment().year(year).week(week).startOf("week");
+    const allDays = Array.from({ length: 7 }, (_, i) => startOfWeek.clone().add(i, "day").format("YYYY-MM-DD"));
+
+    const normalizedStats = statsRaw.map((s) => ({
+      ...s,
+      _id: moment(s._id).format("YYYY-MM-DD"),
+    }));
+
+    stats = allDays.map((d) => {
+      const existing = normalizedStats.find((s) => s._id === d);
+      return existing || { _id: d, revenue: 0, cost: 0 };
+    });
+  }
+
+  // 📅 Nếu xem theo tháng → hiển thị theo ngày hoặc theo tuần
+  if (period === "month" && req.query.month) {
+    const month = parseInt(req.query.month);
+    const startOfMonth = moment({ year, month: month - 1 }).startOf("month");
+    const endOfMonth = moment({ year, month: month - 1 }).endOf("month");
+
+    if (groupBy === "day") {
+      // 🗓️ Nhóm theo ngày trong tháng
+      const daysInMonth = endOfMonth.date();
+      const allDays = Array.from({ length: daysInMonth }, (_, i) =>
+        startOfMonth.clone().add(i, "day").format("YYYY-MM-DD")
+      );
+
+      const normalizedStats = statsRaw.map((s) => ({
+        ...s,
+        _id: moment(s._id).format("YYYY-MM-DD"),
+      }));
+
+      stats = allDays.map((d) => {
+        const existing = normalizedStats.find((s) => s._id === d);
+        return existing || { _id: d, revenue: 0, cost: 0 };
+      });
+    } else if (groupBy === "week") {
+      // 📆 Nhóm theo tuần trong tháng
+      const startWeek = startOfMonth.week();
+      const endWeek = endOfMonth.week();
+      const allWeeks = Array.from({ length: endWeek - startWeek + 1 }, (_, i) => {
+        const weekNum = startWeek + i;
+        return `${year}-W${weekNum.toString().padStart(2, "0")}`;
+      });
+
+      const normalizedStats = statsRaw.map((s) => {
+        const [y, w] = s._id.split("-");
+        return { ...s, _id: `${y}-W${w.padStart(2, "0")}` };
+      });
+
+      stats = allWeeks.map((w) => {
+        const existing = normalizedStats.find((s) => s._id === w);
+        return existing || { _id: w, revenue: 0, cost: 0 };
+      });
+    }
+  }
+
+  // 📅 Nếu xem theo năm → đảm bảo có đủ 12 tháng
+  if (period === "year") {
+    const allMonths = Array.from({ length: 12 }, (_, i) => moment({ year, month: i }).format("YYYY-MM"));
+
+    const normalizedStats = statsRaw.map((s) => ({
+      ...s,
+      _id: moment(s._id).format("YYYY-MM"),
+    }));
+
+    stats = allMonths.map((m) => {
+      const existing = normalizedStats.find((s) => s._id === m);
+      return existing || { _id: m, revenue: 0, cost: 0 };
+    });
+  }
+
+  // ---- 5️⃣ Tính toán chỉ số ----
+  const analysis = stats.map((s, i) => {
+    const prev = stats[i - 1];
+    const revenue = s.revenue || 0;
+    const cost = s.cost || 0;
+    const profit = revenue - cost;
+    const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+    const growth = prev ? ((revenue - prev.revenue) / (prev.revenue || 1)) * 100 : 0;
+
+    return {
+      period: s._id,
+      revenue,
+      cost,
+      profit,
+      margin: Number(margin.toFixed(2)),
+      growth: Number(growth.toFixed(2)),
+    };
+  });
+
+  // ---- 7️⃣ Gợi ý món ăn theo thời gian ----
+  const dishInsights = [];
+
+  Object.entries(groupedTopDishesLimited).forEach(([period, dishes]) => {
+    if (!dishes.length) return;
+
+    // 🔸 Sắp xếp lại để lấy món bán chạy nhất
+    const sorted = [...dishes].sort((a, b) => b.totalSold - a.totalSold);
+    const bestDish = sorted[0];
+    const avgSold = dishes.reduce((a, b) => a + b.totalSold, 0) / dishes.length;
+
+    // 🔸 Tính tỷ lệ vượt trung bình
+    const ratio = (bestDish.totalSold / avgSold).toFixed(2);
+
+    // 🔸 Random chọn template để tạo cảm giác "đa dạng"
+    const strongTemplates = [
+      `🔥 Ở giai đoạn ${period}, món **"${bestDish.name}"** bán cực chạy (${bestDish.totalSold} phần, cao hơn trung bình ${ratio}×) — nên đẩy mạnh quảng cáo hoặc giảm giá nhẹ để tối đa hóa doanh thu.`,
+      `📈 Trong ${period}, món **"${bestDish.name}"** bứt phá doanh số, chiếm tỉ trọng lớn nhất trong các đơn hàng — đề xuất đẩy mạnh hiển thị trong menu chính.`,
+      `💰 "${bestDish.name}" đang tạo ra doanh thu vượt trội trong giai đoạn ${period} — nên cân nhắc bổ sung combo hoặc ưu đãi riêng.`,
+    ];
+
+    const stableTemplates = [
+      `🍽 Trong khoảng ${period}, các món ${dishes
+        .map((d) => `"${d.name}"`)
+        .join(", ")} đều có doanh số ổn định — nên duy trì nguyên liệu và dự báo nhập hàng hợp lý.`,
+      `🥗 Giai đoạn ${period} cho thấy sức mua ổn định ở các món ${dishes
+        .map((d) => `"${d.name}"`)
+        .join(", ")} — phù hợp để giữ nguyên giá và chiến lược hiện tại.`,
+      `🧾 Các món ${dishes
+        .map((d) => `"${d.name}"`)
+        .join(", ")} duy trì doanh số tốt trong ${period} — nên tập trung đảm bảo chất lượng phục vụ.`,
+    ];
+
+    const weakTemplates = [
+      `⚠️ Trong ${period}, không có món nào nổi bật rõ rệt — nên xem xét chương trình khuyến mãi hoặc thay đổi thực đơn để kích cầu.`,
+      `🕐 Giai đoạn ${period} ghi nhận mức bán trung bình thấp — nên đánh giá lại menu hoặc cải thiện hình ảnh món ăn.`,
+    ];
+
+    // 🔸 Lựa chọn câu phù hợp theo tỷ lệ vượt trung bình
+    if (bestDish.totalSold > avgSold * 1.5) {
+      dishInsights.push(strongTemplates[Math.floor(Math.random() * strongTemplates.length)]);
+    } else if (bestDish.totalSold < avgSold * 0.8) {
+      dishInsights.push(weakTemplates[Math.floor(Math.random() * weakTemplates.length)]);
+    } else {
+      dishInsights.push(stableTemplates[Math.floor(Math.random() * stableTemplates.length)]);
+    }
+  });
+
+  // ---- 6️⃣ Gọi sang Python service để phân tích sâu ----
+  try {
+    const response = await axios.post("http://127.0.0.1:8000/analyze", {
+      data: analysis,
+      scenario: req.body.scenario,
+      period_type: period,
+      groupBy: groupBy,
+    });
+
+    const result = response.data;
+
+    return res.status(200).json(
+      successResponse({
+        analysis,
+        ...result,
+        topDishes: groupedTopDishesLimited,
+        dishInsights,
+      })
+    );
+  } catch (err) {
+    console.error("Python service error:", err);
+    return res.status(500).json({ error: "Python service failed" });
+  }
+});
 
 const getStoreIdFromUser = async (userId) => {
   const store = await Store.findOne({
@@ -415,7 +778,7 @@ const revenueByDishGroup = asyncHandler(async (req, res) => {
   return res.status(200).json(successResponse(results));
 });
 
-const analyzeBusinessResult = asyncHandler(async (req, res) => {
+const analyzeBusinessResultTest = asyncHandler(async (req, res) => {
   const userId = req.user._id;
   const year = parseInt(req.query.year) || moment().year();
   const period = req.query.period || "month"; // thêm param: day | week | month | year
