@@ -651,186 +651,78 @@ const revenueByItem = asyncHandler(async (req, res) => {
   const userId = req.user?._id;
   const limit = parseInt(req.query.limit) || 5;
   const period = req.query.period || "day"; // day | week | month | year
+  const groupBy = req.query.groupBy || "day"; // 👈 thêm groupBy
   const month = parseInt(req.query.month);
-  const year = parseInt(req.query.year);
+  const year = parseInt(req.query.year) || moment().year();
+  const week = parseInt(req.query.week);
+  const date = req.query.date;
 
-  if (!userId) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing user ID in token",
-    });
-  }
+  if (!userId) return res.status(400).json({ success: false, message: "Missing user ID in token" });
 
   const store = await Store.findOne({
     $or: [{ owner: userId }, { staff: userId }],
   });
-
-  if (!store) {
-    return res.status(401).json({
-      success: false,
-      message: "Unauthorized or store not found",
-    });
-  }
+  if (!store) return res.status(401).json({ success: false, message: "Unauthorized or store not found" });
 
   const storeId = store._id;
-  const now = moment().tz("Asia/Ho_Chi_Minh");
 
+  // 🔹 Tính startDate - endDate
   let startDate, endDate;
-
-  if (period === "day") {
-    const m = month ? month - 1 : now.month(); // moment: month index 0-11
-    const y = year || now.year();
-
-    startDate = moment({ year: y, month: m, day: 1 }).startOf("day").toDate();
-    endDate = moment(startDate).endOf("month").endOf("day").toDate();
-  } else if (period === "week") {
-    const y = year || now.year();
-    // tuần đầu tiên và tuần cuối cùng trong năm theo ISO
-    startDate = moment({ year: y }).startOf("year").startOf("isoWeek").toDate();
-    endDate = moment({ year: y }).endOf("year").endOf("isoWeek").toDate();
-  } else if (period === "month") {
-    const y = year || now.year();
-    startDate = moment({ year: y, month: 0, day: 1 }).startOf("day").toDate();
-    endDate = moment({ year: y, month: 11, day: 31 }).endOf("day").toDate();
-  } else if (period === "year") {
-    // lấy toàn bộ, không filter theo thời gian
+  if (period === "day" && date) {
+    startDate = moment(date).startOf("day").toDate();
+    endDate = moment(date).endOf("day").toDate();
+  } else if (period === "week" && week && year) {
+    startDate = moment().year(year).week(week).startOf("week").toDate();
+    endDate = moment().year(year).week(week).endOf("week").toDate();
+  } else if (period === "month" && month) {
+    startDate = moment({ year, month: month - 1 })
+      .startOf("month")
+      .toDate();
+    endDate = moment({ year, month: month - 1 })
+      .endOf("month")
+      .toDate();
+  } else {
+    startDate = moment({ year }).startOf("year").toDate();
+    endDate = moment({ year }).endOf("year").toDate();
   }
 
-  // Step 1: Get orderIds trong khoảng thời gian
-  const match = {
+  // 🔹 Lọc đơn hàng trong khoảng thời gian
+  const orders = await Order.find({
     storeId,
     status: { $in: ["done", "delivered", "finished"] },
-  };
-  if (startDate && endDate) {
-    match.createdAt = { $gte: startDate, $lte: endDate };
-  }
+    createdAt: { $gte: startDate, $lte: endDate },
+  }).select("_id");
 
-  const orders = await Order.find(match).select("_id");
   const orderIds = orders.map((o) => o._id);
 
-  // Step 2: Aggregate từ OrderItem
+  // 🔹 Tổng hợp doanh thu theo món ăn + groupBy thời gian
+  let dateFormat = "%Y-%m-%d"; // default theo ngày
+  if (period === "month" && groupBy === "week") dateFormat = "%Y-W%U";
+  else if (period === "year") dateFormat = "%Y-%m";
+
   const result = await OrderItem.aggregate([
     { $match: { orderId: { $in: orderIds } } },
     {
-      $group: {
-        _id: "$dishName",
-        totalRevenue: { $sum: { $multiply: ["$price", "$quantity"] } },
-        totalCost: { $sum: { $ifNull: ["$cost", 0] } },
-        totalQuantity: { $sum: "$quantity" },
-      },
-    },
-    {
-      $addFields: {
-        totalProfit: { $subtract: ["$totalRevenue", { $ifNull: ["$totalCost", 0] }] },
-        margin: {
-          $cond: [
-            { $gt: ["$totalRevenue", 0] },
-            {
-              $divide: [{ $toDouble: { $ifNull: ["$totalProfit", 0] } }, { $toDouble: "$totalRevenue" }],
-            },
-            0,
-          ],
-        },
-      },
-    },
-    { $sort: { totalRevenue: -1 } },
-    { $limit: limit },
-    {
-      $project: {
-        _id: 0,
-        dishName: "$_id",
-        totalRevenue: 1,
-        totalCost: 1,
-        totalProfit: 1,
-        margin: 1,
-        totalQuantity: 1,
-      },
-    },
-  ]);
-
-  const formatted = result.map((r) => ({
-    ...r,
-    totalRevenue: Number(r.totalRevenue),
-    totalCost: Number(r.totalCost),
-    totalProfit: Number(r.totalProfit),
-    margin: Number(r.margin),
-  }));
-
-  return res.status(200).json(successResponse(formatted));
-});
-
-const revenueByDishGroup = asyncHandler(async (req, res) => {
-  const userId = req.user?._id;
-  const limit = parseInt(req.query.limit) || 5;
-  const period = req.query.period || "day"; // day | month | year
-  const month = parseInt(req.query.month);
-  const year = parseInt(req.query.year);
-
-  if (!userId) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing user ID in token",
-    });
-  }
-
-  const storeId = await getStoreIdFromUser(userId);
-  const now = moment().tz("Asia/Ho_Chi_Minh");
-
-  let startDate, endDate;
-  if (period === "day") {
-    const m = month ? month - 1 : now.month();
-    const y = year || now.year();
-    startDate = moment({ year: y, month: m, day: 1 }).startOf("day").toDate();
-    endDate = moment(startDate).endOf("month").endOf("day").toDate();
-  } else if (period === "week") {
-    const y = year || now.year();
-    startDate = moment({ year: y }).startOf("year").startOf("isoWeek").toDate();
-    endDate = moment({ year: y }).endOf("year").endOf("isoWeek").toDate();
-  } else if (period === "month") {
-    const y = year || now.year();
-    startDate = moment({ year: y, month: 0, day: 1 }).startOf("day").toDate();
-    endDate = moment({ year: y, month: 11, day: 31 }).endOf("day").toDate();
-  } else if (period === "year") {
-    // lấy toàn bộ năm → hoặc bỏ filter thời gian
-  }
-
-  const match = {
-    storeId,
-    status: { $in: ["done", "delivered", "finished"] },
-  };
-  if (startDate && endDate) {
-    match.createdAt = { $gte: startDate, $lte: endDate };
-  }
-
-  // Lấy orderIds
-  const orders = await Order.find(match).select("_id");
-  const orderIds = orders.map((o) => o._id);
-
-  // Aggregate theo group
-  const results = await OrderItem.aggregate([
-    { $match: { orderId: { $in: orderIds } } },
-    {
       $lookup: {
-        from: "dishes",
-        localField: "dishId",
+        from: "orders",
+        localField: "orderId",
         foreignField: "_id",
-        as: "dishDetail",
+        as: "order",
       },
     },
-    { $unwind: "$dishDetail" },
-    {
-      $lookup: {
-        from: "dishgroups",
-        let: { dishId: "$dishId" },
-        pipeline: [{ $match: { $expr: { $in: ["$$dishId", "$dishes"] } } }, { $project: { _id: 1, name: 1 } }],
-        as: "dishGroup",
-      },
-    },
-    { $unwind: "$dishGroup" },
+    { $unwind: "$order" },
     {
       $group: {
-        _id: "$dishGroup._id",
-        groupName: { $first: "$dishGroup.name" },
+        _id: {
+          time: {
+            $dateToString: {
+              format: dateFormat,
+              date: "$order.createdAt",
+              timezone: "Asia/Ho_Chi_Minh",
+            },
+          },
+          dishName: "$dishName",
+        },
         totalRevenue: { $sum: { $multiply: ["$price", "$quantity"] } },
         totalCost: { $sum: { $ifNull: ["$cost", 0] } },
         totalQuantity: { $sum: "$quantity" },
@@ -844,11 +736,163 @@ const revenueByDishGroup = asyncHandler(async (req, res) => {
         },
       },
     },
-    { $sort: { totalRevenue: -1 } },
+    { $sort: { "_id.time": 1, totalRevenue: -1 } },
     { $limit: limit },
   ]);
 
-  return res.status(200).json(successResponse(results));
+  return res.status(200).json(successResponse(result));
+});
+
+const revenueByDishGroup = asyncHandler(async (req, res) => {
+  const userId = req.user?._id;
+  const limit = parseInt(req.query.limit) || 5;
+  const period = req.query.period || "day";
+  const groupBy = req.query.groupBy || "day";
+  const month = parseInt(req.query.month);
+  const year = parseInt(req.query.year) || moment().year();
+  const week = parseInt(req.query.week);
+  const date = req.query.date;
+
+  // 1️⃣ Xác định cửa hàng
+  const store = await Store.findOne({
+    $or: [{ owner: userId }, { staff: userId }],
+  });
+  if (!store) return res.status(401).json({ success: false, message: "Unauthorized or store not found" });
+
+  const storeId = store._id;
+
+  // 2️⃣ Xác định khoảng thời gian
+  let startDate, endDate;
+  if (period === "day" && date) {
+    startDate = moment(date).startOf("day").toDate();
+    endDate = moment(date).endOf("day").toDate();
+  } else if (period === "week" && week && year) {
+    startDate = moment().year(year).week(week).startOf("week").toDate();
+    endDate = moment().year(year).week(week).endOf("week").toDate();
+  } else if (period === "month" && month) {
+    startDate = moment({ year, month: month - 1 })
+      .startOf("month")
+      .toDate();
+    endDate = moment({ year, month: month - 1 })
+      .endOf("month")
+      .toDate();
+  } else {
+    startDate = moment({ year }).startOf("year").toDate();
+    endDate = moment({ year }).endOf("year").toDate();
+  }
+
+  // 3️⃣ Lấy danh sách đơn hàng đã hoàn tất trong khoảng thời gian
+  const orders = await Order.find({
+    storeId,
+    status: { $in: ["done", "delivered", "finished"] },
+    createdAt: { $gte: startDate, $lte: endDate },
+  }).select("_id createdAt");
+
+  if (!orders.length) {
+    return res.status(200).json(successResponse([]));
+  }
+
+  const orderIds = orders.map((o) => o._id);
+
+  // 4️⃣ Format thời gian hiển thị
+  let dateFormat = "%Y-%m-%d";
+  if (period === "month" && groupBy === "week") dateFormat = "%Y-W%U";
+  else if (period === "year") dateFormat = "%Y-%m";
+
+  // 5️⃣ Pipeline tổng hợp doanh thu theo DishGroup
+  const result = await OrderItem.aggregate([
+    { $match: { orderId: { $in: orderIds } } },
+
+    // lấy thông tin order
+    {
+      $lookup: {
+        from: "orders",
+        localField: "orderId",
+        foreignField: "_id",
+        as: "order",
+      },
+    },
+    { $unwind: "$order" },
+
+    // lookup sang dishgroups để tìm group chứa dish này
+    {
+      $lookup: {
+        from: "dishgroups",
+        let: { dishId: "$dishId", storeId: "$order.storeId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [{ $eq: ["$storeId", "$$storeId"] }, { $in: ["$$dishId", "$dishes"] }],
+              },
+            },
+          },
+          { $project: { name: 1 } },
+        ],
+        as: "group",
+      },
+    },
+    { $unwind: "$group" },
+
+    // nhóm theo thời gian + tên nhóm món
+    {
+      $group: {
+        _id: {
+          time: {
+            $dateToString: {
+              format: dateFormat,
+              date: "$order.createdAt",
+              timezone: "Asia/Ho_Chi_Minh",
+            },
+          },
+          group: "$group.name",
+        },
+        totalRevenue: { $sum: { $multiply: ["$price", "$quantity"] } },
+        totalCost: { $sum: { $ifNull: ["$cost", 0] } },
+        totalQuantity: { $sum: "$quantity" },
+      },
+    },
+
+    // thêm lợi nhuận và margin
+    {
+      $addFields: {
+        totalProfit: { $subtract: ["$totalRevenue", "$totalCost"] },
+        margin: {
+          $cond: [{ $gt: ["$totalRevenue", 0] }, { $divide: ["$totalProfit", "$totalRevenue"] }, 0],
+        },
+      },
+    },
+
+    // sắp xếp theo thời gian và doanh thu giảm dần
+    { $sort: { "_id.time": 1, totalRevenue: -1 } },
+
+    // giới hạn top N nhóm có doanh thu cao nhất
+    {
+      $group: {
+        _id: "$_id.time",
+        groups: {
+          $push: {
+            group: "$_id.group",
+            totalRevenue: "$totalRevenue",
+            totalProfit: "$totalProfit",
+            totalCost: "$totalCost",
+            totalQuantity: "$totalQuantity",
+            margin: "$margin",
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        time: "$_id",
+        groups: { $slice: ["$groups", limit] }, // chỉ lấy top N nhóm mỗi ngày
+        _id: 0,
+      },
+    },
+    { $sort: { time: 1 } },
+  ]);
+
+  return res.status(200).json(successResponse(result));
 });
 
 const analyzeBusinessResultTest = asyncHandler(async (req, res) => {
