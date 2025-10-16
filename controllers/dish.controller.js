@@ -13,12 +13,13 @@ const getDishById = asyncHandler(async (req, res, next) => {
   }
 
   const dish = await Dish.findById(dish_id)
-    .select("name price description status image category toppingGroups ingredients")
+    .select("name price description status image category category toppingGroups ingredients")
     .populate({
       path: "toppingGroups",
       populate: { path: "toppings" },
     })
-    .populate("ingredients.ingredient");
+    .populate("ingredients.ingredient")
+    .populate("category"); // ✅ thêm dòng này
 
   if (!dish) {
     return next(createError(404, "Dish not found"));
@@ -41,20 +42,26 @@ const getDishesByStoreId = asyncHandler(async (req, res, next) => {
       path: "toppingGroups",
       populate: { path: "toppings" },
     })
-    .populate("ingredients.ingredient");
+    .populate("ingredients.ingredient")
+    .populate("category"); // ✅ thêm dòng này
 
   res.status(200).json(successResponse(dishes, "Dishes retrieved successfully"));
 });
 
 const createDish = asyncHandler(async (req, res, next) => {
   const { storeId } = req.params;
-  const { name, price, description, status, image, toppingGroups, dishGroupIds, ingredients } = req.body;
+  const { name, price, description, status, image, toppingGroups, dishGroupIds, ingredients, category } = req.body;
 
   if (!storeId) {
     return next(createError(400, "Store ID is required"));
   }
   if (!name || !price) {
     return next(createError(400, "All fields are required"));
+  }
+
+  const isValidCategory = store.storeCategory.some((catId) => catId.equals(category));
+  if (!isValidCategory) {
+    return next(createError(400, "Danh mục này không thuộc về các category mà cửa hàng đã đăng ký"));
   }
 
   const dish = await Dish.create({
@@ -66,6 +73,7 @@ const createDish = asyncHandler(async (req, res, next) => {
     toppingGroups,
     ingredients,
     storeId,
+    category,
   });
 
   if (dishGroupIds && dishGroupIds.length > 0) {
@@ -91,7 +99,7 @@ const changeStatus = asyncHandler(async (req, res, next) => {
 
 const updateDish = asyncHandler(async (req, res, next) => {
   const { dish_id } = req.params;
-  const { name, price, description, status, image, toppingGroups, ingredients } = req.body;
+  const { name, price, description, status, image, toppingGroups, ingredients, category } = req.body;
 
   if (!dish_id) {
     return next(createError(400, "Dish ID is required"));
@@ -100,6 +108,18 @@ const updateDish = asyncHandler(async (req, res, next) => {
   const dish = await Dish.findById(dish_id);
   if (!dish) {
     return next(createError(404, "Dish not found"));
+  }
+
+  if (category && !dish.storeId.equals(undefined)) {
+    const store = await mongoose.model("Store").findById(dish.storeId).select("storeCategory");
+    if (!store) return next(createError(404, "Store not found"));
+
+    const isValidCategory = store.storeCategory.some((catId) => catId.equals(category));
+    if (!isValidCategory) {
+      return next(createError(400, "Danh mục này không thuộc về các category mà cửa hàng đã đăng ký"));
+    }
+
+    dish.category = category;
   }
 
   dish.name = name || dish.name;

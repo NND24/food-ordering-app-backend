@@ -1,4 +1,5 @@
 const SystemCategory = require("../models/systemCategory.model");
+const Store = require("../models/store.model");
 const createError = require("../utils/createError");
 const asyncHandler = require("express-async-handler");
 
@@ -13,6 +14,32 @@ const getAllSystemCategory = asyncHandler(async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+const getSystemCategoryByStoreId = asyncHandler(async (req, res, next) => {
+  const { storeId } = req.params;
+
+  if (!storeId) {
+    return next(createError(400, "Store ID is required"));
+  }
+
+  // 🔍 Tìm cửa hàng và lấy danh mục đã đăng ký
+  const store = await Store.findById(storeId).select("storeCategory");
+  if (!store) {
+    return next(createError(404, "Store not found"));
+  }
+
+  // 🔍 Lấy chi tiết các danh mục
+  const categories = await SystemCategory.find({
+    _id: { $in: store.storeCategory },
+  });
+
+  res.status(200).json({
+    success: true,
+    data: categories,
+    count: categories.length,
+    message: "System categories retrieved successfully for this store",
+  });
 });
 
 const getSystemCategory = asyncHandler(async (req, res, next) => {
@@ -94,6 +121,7 @@ const deleteSystemCategory = asyncHandler(async (req, res, next) => {
 
 module.exports = {
   getAllSystemCategory,
+  getSystemCategoryByStoreId,
   getSystemCategory,
   createSystemCategory,
   updateSystemCategory,

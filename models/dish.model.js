@@ -21,6 +21,11 @@ const dishSchema = new mongoose.Schema(
       filePath: String,
       url: String,
     },
+    category: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SystemCategory",
+      required: true,
+    },
     toppingGroups: [
       {
         type: mongoose.Schema.Types.ObjectId,

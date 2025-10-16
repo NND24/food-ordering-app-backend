@@ -176,6 +176,94 @@ Trả về ở dạng JSON: [{"name": "...", "description": "...", "mainIngredie
 };
 
 /**
+ * Gợi ý món ăn dựa trên các cửa hàng cùng category
+ */
+const getRecommendedDishesByCategory = asyncHandler(async (req, res) => {
+  const userId = req.user?._id;
+  if (!userId) return res.status(400).json({ success: false, message: "Missing user ID" });
+
+  // 1️⃣ Lấy thông tin cửa hàng của người dùng
+  const store = await Store.findOne({ $or: [{ owner: userId }, { staff: userId }] })
+    .populate("storeCategory", "_id name")
+    .lean();
+
+  if (!store) return res.status(404).json({ success: false, message: "Store not found" });
+
+  const systemCategoryIds = store.storeCategory.map((c) => c._id);
+
+  // 2️⃣ Lấy danh sách các cửa hàng khác cùng category
+  const relatedStores = await Store.find({
+    _id: { $ne: store._id },
+    storeCategory: { $in: systemCategoryIds },
+    status: "APPROVED",
+  }).select("_id name");
+
+  if (relatedStores.length === 0) return res.json({ success: true, message: "No related stores found", data: [] });
+
+  const relatedStoreIds = relatedStores.map((s) => s._id);
+
+  // 3️⃣ Lấy các món ăn từ các cửa hàng đó
+  const popularDishes = await OrderItem.aggregate([
+    {
+      $lookup: {
+        from: "orders",
+        localField: "orderId",
+        foreignField: "_id",
+        as: "order",
+      },
+    },
+    { $unwind: "$order" },
+    {
+      $match: {
+        "order.storeId": { $in: relatedStoreIds },
+        "order.status": { $in: ["finished", "done", "delivered"] },
+      },
+    },
+    {
+      $group: {
+        _id: "$dishId",
+        dishName: { $first: "$dishName" },
+        totalSold: { $sum: "$quantity" },
+      },
+    },
+    { $sort: { totalSold: -1 } },
+    { $limit: 20 }, // lấy top 20 món bán chạy nhất trong nhóm category
+  ]);
+
+  // 4️⃣ Lấy danh sách món ăn hiện có của quán
+  const myDishIds = (await Dish.find({ storeId: store._id }).select("_id name").lean()).map((d) => d._id.toString());
+
+  // 5️⃣ Lọc ra món mà quán chưa có
+  const filtered = popularDishes.filter((d) => !myDishIds.includes(d._id.toString()));
+
+  // 6️⃣ Lấy thông tin chi tiết của món ăn
+  const detailedDishes = await Dish.find({ _id: { $in: filtered.map((d) => d._id) } })
+    .populate("storeId", "name")
+    .populate("category", "name")
+    .lean();
+
+  // 7️⃣ Kết hợp với dữ liệu totalSold
+  const finalSuggestions = detailedDishes.map((dish) => {
+    const stat = filtered.find((f) => f._id.toString() === dish._id.toString());
+    return {
+      _id: dish._id,
+      name: dish.name,
+      image: dish.image?.url,
+      category: dish.category?.name,
+      fromStore: dish.storeId?.name,
+      totalSold: stat?.totalSold || 0,
+    };
+  });
+
+  res.json({
+    success: true,
+    store: store.name,
+    relatedStoreCount: relatedStores.length,
+    data: finalSuggestions,
+  });
+});
+
+/**
  * API chính: Gợi ý món ăn mới
  */
 const getRecommendedDishes = asyncHandler(async (req, res) => {
@@ -223,4 +311,4 @@ const improveVietnameseDescription = async (englishCaption) => {
   }
 };
 
-module.exports = { getRecommendedDishes, improveVietnameseDescription };
+module.exports = { getRecommendedDishes, getRecommendedDishesByCategory, improveVietnameseDescription };

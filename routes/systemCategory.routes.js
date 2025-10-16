@@ -6,11 +6,13 @@ const {
   createSystemCategory,
   updateSystemCategory,
   deleteSystemCategory,
+  getSystemCategoryByStoreId,
 } = require("../controllers/systemCategory.controller");
 
 const router = express.Router();
 
 router.get("/", getAllSystemCategory);
+router.get("/store/:storeId", getSystemCategoryByStoreId);
 router.get("/:id", validateMongoDbId("id"), getSystemCategory);
 
 router.post("/", createSystemCategory);

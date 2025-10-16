@@ -476,52 +476,68 @@ const getStartDates = () => {
 
 const revenueByPeriod = asyncHandler(async (req, res) => {
   const userId = req.user._id;
-  const period = req.query.period || "day"; // day | week | month | year
-  const month = parseInt(req.query.month); // 1-12
-  const year = parseInt(req.query.year);
+  const period = req.query.period || "month"; // day | week | month | year
+  const groupBy = req.query.groupBy || "day"; // chỉ dùng khi period = month
+  const year = parseInt(req.query.year) || moment().year();
+  const month = parseInt(req.query.month);
+  const week = parseInt(req.query.week);
+  const date = req.query.date;
 
+  // 🔹 Tìm cửa hàng của người dùng
   const store = await Store.findOne({
     $or: [{ owner: userId }, { staff: userId }],
   });
   if (!store) return res.status(404).json({ success: false, message: "Store not found" });
 
   const storeId = store._id;
-  const now = moment().tz("Asia/Ho_Chi_Minh");
 
-  let startDate, endDate, groupFormat, projectField;
-  if (period === "day") {
-    const m = month ? month - 1 : now.month();
-    const y = year || now.year();
-    startDate = moment({ year: y, month: m, day: 1 }).startOf("day").toDate();
-    endDate = moment(startDate).endOf("month").endOf("day").toDate();
-    groupFormat = "%Y-%m-%d";
-    projectField = "date";
-  } else if (period === "week") {
-    const y = year || now.year();
-    startDate = moment({ year: y }).startOf("year").startOf("isoWeek").toDate();
-    endDate = moment({ year: y }).endOf("year").endOf("isoWeek").toDate();
-    groupFormat = "%G-W%V"; // ISO week
-    projectField = "week";
-  } else if (period === "month") {
-    const y = year || now.year();
-    startDate = moment({ year: y, month: 0, day: 1 }).startOf("day").toDate();
-    endDate = moment({ year: y, month: 11, day: 31 }).endOf("day").toDate();
-    groupFormat = "%Y-%m";
-    projectField = "month";
-  } else if (period === "year") {
-    groupFormat = "%Y";
-    projectField = "year";
+  // ---- 1️⃣ Xác định khoảng thời gian lọc ----
+  const matchStage = {
+    storeId,
+    status: { $in: ["done", "delivered", "finished"] },
+  };
+
+  if (period === "day" && date) {
+    const startOfDay = moment(date).startOf("day").toDate();
+    const endOfDay = moment(date).endOf("day").toDate();
+    matchStage.createdAt = { $gte: startOfDay, $lte: endOfDay };
+  } else if (period === "week" && week && year) {
+    const startOfWeek = moment().year(year).week(week).startOf("week").toDate();
+    const endOfWeek = moment().year(year).week(week).endOf("week").toDate();
+    matchStage.createdAt = { $gte: startOfWeek, $lte: endOfWeek };
+  } else if (period === "month" && month) {
+    const startOfMonth = moment({ year, month: month - 1 })
+      .startOf("month")
+      .toDate();
+    const endOfMonth = moment({ year, month: month - 1 })
+      .endOf("month")
+      .toDate();
+    matchStage.createdAt = { $gte: startOfMonth, $lte: endOfMonth };
+  } else {
+    // cả năm
+    matchStage.createdAt = {
+      $gte: moment({ year }).startOf("year").toDate(),
+      $lte: moment({ year }).endOf("year").toDate(),
+    };
   }
 
-  const match = { storeId, status: { $in: ["done", "delivered", "finished"] } };
-  if (startDate && endDate) match.createdAt = { $gte: startDate, $lte: endDate };
+  // ---- 2️⃣ Định dạng nhóm ----
+  let dateFormat = "%Y-%m"; // default theo tháng
+  if (period === "day") dateFormat = "%H:00"; // theo giờ
+  else if (period === "week") dateFormat = "%Y-%m-%d"; // từng ngày trong tuần
+  else if (period === "month") {
+    if (groupBy === "day") dateFormat = "%Y-%m-%d";
+    else if (groupBy === "week") dateFormat = "%Y-W%U";
+  } else if (period === "year") dateFormat = "%Y-%m"; // theo tháng
 
-  // 1. Aggregate revenue & cost từ Order
-  const stats = await Order.aggregate([
-    { $match: match },
+  // ---- 3️⃣ Lấy dữ liệu doanh thu & chi phí ----
+  const statsRaw = await Order.aggregate([
+    { $match: matchStage },
     {
       $group: {
-        _id: { $dateToString: { format: groupFormat, date: "$createdAt", timezone: "Asia/Ho_Chi_Minh" } },
+        _id: {
+          $dateToString: { format: dateFormat, date: "$createdAt", timezone: "Asia/Ho_Chi_Minh" },
+        },
         revenue: { $sum: "$finalTotal" },
         cost: { $sum: "$totalCost" },
       },
@@ -529,12 +545,12 @@ const revenueByPeriod = asyncHandler(async (req, res) => {
     { $sort: { _id: 1 } },
   ]);
 
-  // 2. Aggregate wasteCost từ Waste
+  // ---- 4️⃣ Lấy chi phí hao hụt nguyên liệu (wasteCost) ----
   const wasteAgg = await Waste.aggregate([
     {
       $match: {
         storeId,
-        ...(startDate && endDate ? { date: { $gte: startDate, $lte: endDate } } : {}),
+        date: matchStage.createdAt,
       },
     },
     {
@@ -548,29 +564,86 @@ const revenueByPeriod = asyncHandler(async (req, res) => {
     { $unwind: "$batch" },
     {
       $group: {
-        _id: { $dateToString: { format: groupFormat, date: "$date", timezone: "Asia/Ho_Chi_Minh" } },
+        _id: {
+          $dateToString: { format: dateFormat, date: "$date", timezone: "Asia/Ho_Chi_Minh" },
+        },
         wasteCost: { $sum: { $multiply: ["$quantity", "$batch.unitPrice"] } },
       },
     },
     { $sort: { _id: 1 } },
   ]);
 
-  // 3. Merge stats + wasteAgg
-  const merged = stats.map((s) => {
+  // ---- 5️⃣ Chuẩn hóa dữ liệu theo từng period ----
+  let stats = statsRaw;
+
+  if (period === "day") {
+    const allHours = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, "0")}:00`);
+    stats = allHours.map((h) => {
+      const s = statsRaw.find((x) => x._id === h);
+      return s || { _id: h, revenue: 0, cost: 0 };
+    });
+  } else if (period === "week" && week && year) {
+    const startOfWeek = moment().year(year).week(week).startOf("week");
+    const allDays = Array.from({ length: 7 }, (_, i) => startOfWeek.clone().add(i, "day").format("YYYY-MM-DD"));
+    stats = allDays.map((d) => {
+      const s = statsRaw.find((x) => moment(x._id).format("YYYY-MM-DD") === d);
+      return s || { _id: d, revenue: 0, cost: 0 };
+    });
+  } else if (period === "month" && month) {
+    if (groupBy === "day") {
+      const startOfMonth = moment({ year, month: month - 1 }).startOf("month");
+      const daysInMonth = startOfMonth.daysInMonth();
+      const allDays = Array.from({ length: daysInMonth }, (_, i) =>
+        startOfMonth.clone().add(i, "day").format("YYYY-MM-DD")
+      );
+      stats = allDays.map((d) => {
+        const s = statsRaw.find((x) => moment(x._id).format("YYYY-MM-DD") === d);
+        return s || { _id: d, revenue: 0, cost: 0 };
+      });
+    } else if (groupBy === "week") {
+      const startWeek = moment({ year, month: month - 1 })
+        .startOf("month")
+        .week();
+      const endWeek = moment({ year, month: month - 1 })
+        .endOf("month")
+        .week();
+      const allWeeks = Array.from({ length: endWeek - startWeek + 1 }, (_, i) => `${year}-W${startWeek + i}`);
+      stats = allWeeks.map((w) => {
+        const s = statsRaw.find((x) => x._id === w);
+        return s || { _id: w, revenue: 0, cost: 0 };
+      });
+    }
+  } else if (period === "year") {
+    const allMonths = Array.from({ length: 12 }, (_, i) => moment({ year, month: i }).format("YYYY-MM"));
+    stats = allMonths.map((m) => {
+      const s = statsRaw.find((x) => moment(x._id).format("YYYY-MM") === m);
+      return s || { _id: m, revenue: 0, cost: 0 };
+    });
+  }
+
+  // ---- 6️⃣ Gộp wasteCost + tính toán chỉ số ----
+  const merged = stats.map((s, i) => {
     const waste = wasteAgg.find((w) => w._id === s._id);
     const wasteCost = waste ? waste.wasteCost : 0;
-    const profit = s.revenue - (s.cost + wasteCost);
-    const margin = s.revenue > 0 ? (profit / s.revenue) * 100 : 0;
+    const revenue = s.revenue || 0;
+    const cost = s.cost || 0;
+    const profit = revenue - (cost + wasteCost);
+    const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+    const prev = stats[i - 1];
+    const growth = prev ? ((revenue - prev.revenue) / (prev.revenue || 1)) * 100 : 0;
+
     return {
-      [projectField]: s._id,
-      revenue: s.revenue,
-      cost: s.cost,
+      period: s._id,
+      revenue,
+      cost,
       wasteCost,
       profit,
-      margin,
+      margin: Number(margin.toFixed(2)),
+      growth: Number(growth.toFixed(2)),
     };
   });
 
+  // ---- ✅ Trả về kết quả ----
   return res.status(200).json(successResponse(merged));
 });
 
