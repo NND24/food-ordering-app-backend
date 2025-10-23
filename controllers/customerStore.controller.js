@@ -14,6 +14,8 @@ const getAllStore = async (req, res) => {
 
     let filterOptions = {};
 
+    filterOptions.status = "APPROVED";
+
     // Lọc theo danh mục
     if (category) {
       const categories = Array.isArray(category) ? category : category.split(",");

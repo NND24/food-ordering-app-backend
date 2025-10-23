@@ -12,20 +12,6 @@ const cartSchema = new mongoose.Schema(
       ref: "Store",
       required: true,
     },
-    location: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Location",
-    }, 
-    paymentMethod: {
-      type: String,
-      enum: ["cash", "vnpay"],
-    },
-    shippingFee: {
-      type: Number,
-    },
-    voucher: {
-      type: Array
-    }
   },
   {
     timestamps: true,

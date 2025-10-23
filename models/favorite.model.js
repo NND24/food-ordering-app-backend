@@ -8,7 +8,7 @@ var favoriteSchema = new mongoose.Schema({
     ref: "User",
     require: true,
   },
-  store: [
+  storeId: [
     {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Store",

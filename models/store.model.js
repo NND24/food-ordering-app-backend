@@ -29,7 +29,7 @@ const storeSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ["PENDING", "APPROVED", "BLOCKED"],
-      default: "APPROVED",
+      default: "PENDING",
     },
     openStatus: {
       type: String,

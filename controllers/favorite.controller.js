@@ -24,12 +24,12 @@ const getUserFavorite = async (req, res) => {
       });
     }
 
-    favorite.store = favorite.store.filter((store) => store.status === "APPROVED");
+    favorite.storeId = favorite.storeId.filter((store) => store.status === "APPROVED");
 
     const storeRatings = await Rating.aggregate([
       { $group: { _id: "$storeId", avgRating: { $avg: "$ratingValue" }, amountRating: { $sum: 1 } } },
     ]);
-    favorite.store = favorite.store.map((store) => {
+    favorite.storeId = favorite.storeId.map((store) => {
       const rating = storeRatings.find((r) => r._id.toString() == store._id.toString());
       return { ...store, avgRating: rating ? rating.avgRating : 0, amountRating: rating ? rating.amountRating : 0 };
     });
@@ -48,8 +48,6 @@ const addFavorite = async (req, res) => {
   try {
     const userId = req?.user?._id;
     const { storeId } = req.params;
-
-    console.log(storeId);
 
     if (!userId) {
       return res.status(401).json({ success: false, message: "User not found" });
@@ -78,8 +76,8 @@ const addFavorite = async (req, res) => {
       });
     } else {
       // Prevent duplicate store entries
-      if (!favoriteRecord.store.includes(storeId)) {
-        favoriteRecord.store.push(storeId);
+      if (!favoriteRecord.storeId.includes(storeId)) {
+        favoriteRecord.storeId.push(storeId);
       } else {
         return res.status(400).json({ success: false, message: "Store is already in favorites" });
       }
@@ -126,10 +124,10 @@ const removeFavorite = async (req, res) => {
     }
 
     // Remove the store from the list
-    favoriteRecord.store = favoriteRecord.store.filter((id) => id.toString() !== storeId.toString());
+    favoriteRecord.storeId = favoriteRecord.storeId.filter((id) => id.toString() !== storeId.toString());
 
     // If no stores remain, delete the favorite document
-    if (favoriteRecord.store.length === 0) {
+    if (favoriteRecord.storeId.length === 0) {
       await Favorite.deleteOne({ _id: favoriteRecord._id });
       return res.status(200).json({ success: true, message: "Favorite list is now empty and has been deleted" });
     }
