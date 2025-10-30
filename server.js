@@ -10,7 +10,15 @@ const http = require("http");
 const socketIo = require("socket.io");
 const morgan = require("morgan");
 
-const { setSocketIo, getUserSockets, registerStoreSocket, getStoreSockets } = require("./utils/socketManager");
+const {
+  setSocketIo,
+  getUserSockets,
+  registerStoreSocket,
+  getStoreSockets,
+  unregisterStoreSocket,
+  unregisterUserSocket,
+  registerUserSocket,
+} = require("./utils/socketManager");
 const Notification = require("./models/notification.model");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
@@ -122,49 +130,43 @@ const io = socketIo(server, { cors: { origin: "*" } });
 
 setSocketIo(io); // Make io accessible everywhere
 const userSockets = getUserSockets();
+const storeSockets = getStoreSockets();
 
 io.on("connection", (socket) => {
+  console.log(`Socket connected: ${socket.id}`);
+
+  // --- USER ---
   socket.on("registerUser", async (userId) => {
-    // Nếu userId chưa có trong userSockets, tạo mảng mới
-    if (!userSockets[userId]) {
-      userSockets[userId] = [];
-    }
+    registerUserSocket(userId, socket.id);
+    console.log(`User ${userId} connected with socket ${socket.id}`);
 
-    // Thêm socket id vào mảng của user
-    userSockets[userId].push(socket.id);
-
-    console.log(`User ${userId} connected with socket ID: ${socket.id}`);
-
-    // Khi user kết nối, lấy tất cả thông báo của họ
     try {
-      const allNotifications = await Notification.find({ userId }).sort({
-        createdAt: -1,
-      });
-      socket.emit("getAllNotifications", allNotifications); // Gửi về client
+      const allNotifications = await Notification.find({ userId }).sort({ createdAt: -1 });
+      socket.emit("getAllNotifications", allNotifications);
     } catch (error) {
-      console.error("Lỗi lấy thông báo:", error);
+      console.error("Lỗi lấy thông báo user:", error);
     }
   });
 
-  socket.on("registerStore", (storeId) => {
+  // --- STORE ---
+  socket.on("registerStore", async (storeId) => {
     registerStoreSocket(storeId, socket.id);
     console.log(`Store ${storeId} connected with socket ${socket.id}`);
-    console.log(getStoreSockets());
+
+    try {
+      const allNotifications = await Notification.find({ storeId }).sort({ createdAt: -1 });
+      socket.emit("getAllNotifications", allNotifications);
+    } catch (error) {
+      console.error("Lỗi lấy thông báo store:", error);
+    }
   });
 
-  // Gửi thông báo đến tất cả các thiết bị của một user
-  socket.on("sendNotification", async ({ userId, title, message, type, orderId }) => {
+  // --- GỬI THÔNG BÁO ---
+  socket.on("sendNotification", async ({ userId, storeId, title, message, type, orderId }) => {
     try {
-      console.log(`[NOTIFICATION] Sending notification to user ${userId}: ${title}`);
-      console.log("[NOTIFICATION]", {
-        userId,
-        title,
-        message,
-        type,
-        orderId,
-      });
       const newNotification = new Notification({
         userId,
+        storeId,
         title,
         message,
         type,
@@ -172,11 +174,21 @@ io.on("connection", (socket) => {
       });
       await newNotification.save();
 
-      // Gửi thông báo đến tất cả các socket ids của userId
-      if (userSockets[userId]) {
+      console.log("[NOTIFICATION] New:", { userId, storeId, title });
+
+      // Gửi cho user
+      if (userId && userSockets[userId]) {
         userSockets[userId].forEach((socketId) => {
           io.to(socketId).emit("newNotification", newNotification);
-          console.log(`[NOTIFICATION] Notification sent to socket ID: ${socketId}`);
+          console.log(`[NOTIFICATION] Sent to user socket ${socketId}`);
+        });
+      }
+
+      // Gửi cho store
+      if (storeId && storeSockets[storeId]) {
+        storeSockets[storeId].forEach((socketId) => {
+          io.to(socketId).emit("newNotification", newNotification);
+          console.log(`[NOTIFICATION] Sent to store socket ${socketId}`);
         });
       }
     } catch (error) {
@@ -184,14 +196,23 @@ io.on("connection", (socket) => {
     }
   });
 
+  // --- NGẮT KẾT NỐI ---
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
+    console.log("Socket disconnected:", socket.id);
+
+    // Xóa khỏi userSockets
     for (let userId in userSockets) {
-      const socketIndex = userSockets[userId].indexOf(socket.id);
-      if (socketIndex !== -1) {
-        userSockets[userId].splice(socketIndex, 1);
-        console.log(`User ${userId} disconnected, removed socket ID: ${socket.id}`);
-        break;
+      if (userSockets[userId].includes(socket.id)) {
+        unregisterUserSocket(userId, socket.id);
+        console.log(`Removed socket ${socket.id} from user ${userId}`);
+      }
+    }
+
+    // Xóa khỏi storeSockets
+    for (let storeId in storeSockets) {
+      if (storeSockets[storeId].includes(socket.id)) {
+        unregisterStoreSocket(storeId, socket.id);
+        console.log(`Removed socket ${socket.id} from store ${storeId}`);
       }
     }
   });

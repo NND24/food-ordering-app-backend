@@ -365,6 +365,7 @@ const cancelOrder = asyncHandler(async (req, res, next) => {
     } else {
       await Order.findByIdAndDelete(orderId);
     }
+
     res.status(200).json({
       success: true,
       message,

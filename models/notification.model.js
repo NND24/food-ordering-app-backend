@@ -6,6 +6,10 @@ var notificationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    storeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
+    },
     orderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Order",

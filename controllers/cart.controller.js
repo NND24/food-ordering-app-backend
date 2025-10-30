@@ -151,44 +151,93 @@ const getDetailCart = async (req, res) => {
   }
 };
 
-const calculateRequiredIngredients = async (dishId, quantity, toppings) => {
-  let required = {};
+// --- Cache toàn cục để tránh query trùng lặp ---
+const dishCache = new Map(); // key: dishId
+const toppingCache = new Map(); // key: toppingId
 
-  const dish = await Dish.findById(dishId).populate("ingredients.ingredient");
-  if (!dish) throw new Error("Dish not found");
+/**
+ * Tính toán nguyên liệu cần thiết để chế biến món + topping
+ */
+const calculateRequiredIngredients = async (dishId, quantity, toppingIds = []) => {
+  const required = Object.create(null);
 
-  // Dish ingredients
-  for (const ing of dish.ingredients) {
-    const total = ing.quantity * quantity;
-    required[ing.ingredient._id] = (required[ing.ingredient._id] || 0) + total;
+  // 🥘 1️⃣ Lấy món chính từ cache hoặc DB
+  let dish = dishCache.get(dishId);
+  if (!dish) {
+    dish = await Dish.findById(dishId)
+      .select("ingredients.quantity ingredients.ingredient")
+      .populate("ingredients.ingredient", "_id")
+      .lean();
+    if (!dish) throw new Error(`Dish not found: ${dishId}`);
+    dishCache.set(dishId, dish);
   }
 
-  // Topping ingredients
-  if (toppings.length > 0) {
-    const toppingDocs = await Topping.find({ _id: { $in: toppings } }).populate("ingredients.ingredient");
-    for (const topping of toppingDocs) {
-      for (const ing of topping.ingredients) {
-        const total = ing.quantity * quantity;
-        required[ing.ingredient._id] = (required[ing.ingredient._id] || 0) + total;
-      }
+  // Thêm nguyên liệu từ món chính
+  for (const ing of dish.ingredients ?? []) {
+    const id = ing.ingredient._id.toString();
+    required[id] = (required[id] ?? 0) + ing.quantity * quantity;
+  }
+
+  // 🍢 2️⃣ Gom query topping chưa cache
+  const uncachedIds = toppingIds.filter((id) => !toppingCache.has(id));
+
+  if (uncachedIds.length > 0) {
+    const toppingDocs = await Topping.find({ _id: { $in: uncachedIds } })
+      .select("ingredients.quantity ingredients.ingredient")
+      .populate("ingredients.ingredient", "_id")
+      .lean();
+
+    for (const t of toppingDocs) toppingCache.set(t._id.toString(), t);
+  }
+
+  // Thêm nguyên liệu từ topping
+  for (const tid of toppingIds) {
+    const topping = toppingCache.get(tid);
+    if (!topping) continue;
+    for (const ing of topping.ingredients ?? []) {
+      const id = ing.ingredient._id.toString();
+      required[id] = (required[id] ?? 0) + ing.quantity * quantity;
     }
   }
 
   return required; // { ingredientId: totalRequiredQty }
 };
 
+/**
+ * Kiểm tra tồn kho nguyên liệu theo store
+ */
 const checkInventory = async (storeId, required) => {
-  for (const [ingredientId, qty] of Object.entries(required)) {
-    // Lấy tổng tồn kho ingredient từ tất cả batch
-    const batches = await IngredientBatch.find({ storeId, ingredient: ingredientId, status: "active" });
-    const totalRemaining = batches.reduce((sum, b) => sum + b.remainingQuantity, 0);
+  const ingredientIds = Object.keys(required);
+  if (!ingredientIds.length) return;
 
-    if (totalRemaining < qty) {
-      const ing = await Ingredient.findById(ingredientId);
-      throw new Error(
-        `Xin lỗi, hiện tại cửa hàng không đủ nguyên liệu để chế biến món này. Bạn vui lòng giảm số lượng`
-      );
-    }
+  // 🔹 Gom query batch bằng aggregation (chỉ 1 query)
+  const stock = await IngredientBatch.aggregate([
+    {
+      $match: {
+        storeId: new mongoose.Types.ObjectId(storeId),
+        ingredient: { $in: ingredientIds.map((id) => new mongoose.Types.ObjectId(id)) },
+        status: "active",
+      },
+    },
+    {
+      $group: {
+        _id: "$ingredient",
+        totalRemaining: { $sum: "$remainingQuantity" },
+      },
+    },
+  ]);
+
+  // 🔹 Map kết quả tồn kho
+  const stockMap = Object.fromEntries(stock.map((s) => [s._id.toString(), s.totalRemaining]));
+
+  // 🔹 Kiểm tra thiếu nguyên liệu
+  const insufficient = ingredientIds.filter((id) => (stockMap[id] ?? 0) < required[id]);
+
+  if (insufficient.length) {
+    const names = await Ingredient.find({ _id: { $in: insufficient } }, "name")
+      .lean()
+      .then((docs) => docs.map((i) => i.name).join(", "));
+    throw new Error(`Không đủ nguyên liệu: ${names}. Vui lòng giảm số lượng món.`);
   }
 };
 
@@ -369,42 +418,73 @@ const clearCart = async (req, res) => {
   }
 };
 
-const checkCartInventory = async (storeId, cartItems) => {
-  for (const item of cartItems) {
-    const toppings = item.toppings?.map((t) => t._id || t) || [];
-    const requiredIngredients = await calculateRequiredIngredients(
-      item.dishId || item.dish._id,
-      item.quantity,
-      toppings
-    );
-    await checkInventory(storeId, requiredIngredients);
+/**
+ * Kiểm tra tồn kho cho toàn bộ giỏ hàng
+ */
+const checkCartInventory = async (storeId, cartItems = []) => {
+  if (!cartItems.length) return;
+
+  // Gom toàn bộ nguyên liệu cần thiết cho cả giỏ
+  const totalRequired = Object.create(null);
+
+  // ⚙️ 1️⃣ Tính toán song song nguyên liệu từng món
+  const allRequired = await Promise.all(
+    cartItems.map(async (item) => {
+      const toppings = item.toppings?.map((t) => t._id?.toString?.() || t.toString()) || [];
+      const dishId = item.dishId?.toString?.() || item.dish?._id?.toString?.();
+      return calculateRequiredIngredients(dishId, item.quantity, toppings);
+    })
+  );
+
+  // ⚙️ 2️⃣ Gộp tất cả nguyên liệu lại (cộng dồn số lượng)
+  for (const req of allRequired) {
+    for (const [ingredientId, qty] of Object.entries(req)) {
+      totalRequired[ingredientId] = (totalRequired[ingredientId] ?? 0) + qty;
+    }
   }
+
+  // ⚙️ 3️⃣ Kiểm tra tồn kho chỉ 1 lần duy nhất
+  await checkInventory(storeId, totalRequired);
 };
 
 const calculateIngredientCost = async (storeId, dishId, quantity, toppings = []) => {
+  // 1️⃣ Tính toàn bộ nguyên liệu cần thiết
   const required = await calculateRequiredIngredients(dishId, quantity, toppings);
+  const ingredientIds = Object.keys(required).map((id) => new mongoose.Types.ObjectId(id));
 
+  // 2️⃣ Gom tất cả batch cần thiết trong 1 query duy nhất (FIFO)
+  const batches = await IngredientBatch.find({
+    storeId,
+    ingredient: { $in: ingredientIds },
+    status: "active",
+  })
+    .sort({ ingredient: 1, createdAt: 1 })
+    .lean();
+
+  // 3️⃣ Gom batch theo ingredientId
+  const batchesByIngredient = {};
+  for (const batch of batches) {
+    const id = batch.ingredient.toString();
+    if (!batchesByIngredient[id]) batchesByIngredient[id] = [];
+    batchesByIngredient[id].push(batch);
+  }
+
+  // 4️⃣ Tính tổng cost theo FIFO logic
   let totalCost = 0;
+
   for (const [ingredientId, qtyNeeded] of Object.entries(required)) {
     let remaining = qtyNeeded;
+    const ingBatches = batchesByIngredient[ingredientId] || [];
 
-    // Lấy batch theo FIFO
-    const batches = await IngredientBatch.find({
-      storeId,
-      ingredient: ingredientId,
-      status: "active",
-    }).sort({ createdAt: 1 });
-
-    for (const batch of batches) {
+    for (const batch of ingBatches) {
       if (remaining <= 0) break;
-
       const usedQty = Math.min(batch.remainingQuantity, remaining);
       totalCost += usedQty * batch.costPerUnit;
       remaining -= usedQty;
     }
 
     if (remaining > 0) {
-      throw new Error(`Không đủ nguyên liệu để tính cost cho ingredient ${ingredientId}`);
+      throw new Error(`Không đủ nguyên liệu để tính cost cho nguyên liệu ${ingredientId}`);
     }
   }
 
@@ -413,27 +493,49 @@ const calculateIngredientCost = async (storeId, dishId, quantity, toppings = [])
 
 const consumeIngredients = async (storeId, dishId, quantity, toppings = []) => {
   const required = await calculateRequiredIngredients(dishId, quantity, toppings);
+  const ingredientIds = Object.keys(required).map((id) => new mongoose.Types.ObjectId(id));
+
+  // 1️⃣ Lấy toàn bộ batch cần thiết trong 1 lần (FIFO)
+  const batches = await IngredientBatch.find({
+    storeId,
+    ingredient: { $in: ingredientIds },
+    status: "active",
+  })
+    .sort({ ingredient: 1, createdAt: 1 })
+    .lean();
+
+  // 2️⃣ Gom batch theo nguyên liệu
+  const batchesByIngredient = {};
+  for (const batch of batches) {
+    const id = batch.ingredient.toString();
+    if (!batchesByIngredient[id]) batchesByIngredient[id] = [];
+    batchesByIngredient[id].push(batch);
+  }
+
+  // 3️⃣ Chuẩn bị các update để gửi bulk 1 lần
+  const batchUpdates = [];
+  const outOfStockIngredients = [];
 
   for (const [ingredientId, qtyNeeded] of Object.entries(required)) {
     let remaining = qtyNeeded;
+    const ingBatches = batchesByIngredient[ingredientId] || [];
 
-    const batches = await IngredientBatch.find({
-      storeId,
-      ingredient: ingredientId,
-      status: "active",
-    }).sort({ createdAt: 1 });
-
-    for (const batch of batches) {
+    for (const batch of ingBatches) {
       if (remaining <= 0) break;
 
       const usedQty = Math.min(batch.remainingQuantity, remaining);
-      batch.remainingQuantity -= usedQty;
+      const newRemaining = batch.remainingQuantity - usedQty;
 
-      if (batch.remainingQuantity <= 0) {
-        batch.status = "finished";
-      }
+      batchUpdates.push({
+        updateOne: {
+          filter: { _id: batch._id },
+          update:
+            newRemaining > 0
+              ? { $set: { remainingQuantity: newRemaining } }
+              : { $set: { remainingQuantity: 0, status: "finished" } },
+        },
+      });
 
-      await batch.save();
       remaining -= usedQty;
     }
 
@@ -441,28 +543,42 @@ const consumeIngredients = async (storeId, dishId, quantity, toppings = []) => {
       throw new Error(`Nguyên liệu ${ingredientId} không đủ để trừ kho`);
     }
 
-    // 🔽 Sau khi trừ hết batch, check tổng stock còn lại
-    const totalRemaining = await IngredientBatch.aggregate([
-      {
-        $match: {
-          storeId: new mongoose.Types.ObjectId(storeId),
-          ingredient: new mongoose.Types.ObjectId(ingredientId),
-          status: "active",
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: "$remainingQuantity" },
-        },
-      },
-    ]);
+    // Đánh dấu lại để check stock sau
+    outOfStockIngredients.push(new mongoose.Types.ObjectId(ingredientId));
+  }
 
-    const stockLeft = totalRemaining.length > 0 ? totalRemaining[0].total : 0;
+  // 4️⃣ Thực hiện cập nhật batch 1 lần duy nhất
+  if (batchUpdates.length > 0) {
+    await IngredientBatch.bulkWrite(batchUpdates);
+  }
 
-    if (stockLeft <= 0) {
-      await Ingredient.findByIdAndUpdate(ingredientId, { status: "OUT_OF_STOCK" });
-    }
+  // 5️⃣ Kiểm tra tồn kho còn lại (gom toàn bộ 1 lần)
+  const stockInfo = await IngredientBatch.aggregate([
+    {
+      $match: {
+        storeId: new mongoose.Types.ObjectId(storeId),
+        ingredient: { $in: outOfStockIngredients },
+        status: "active",
+      },
+    },
+    {
+      $group: {
+        _id: "$ingredient",
+        total: { $sum: "$remainingQuantity" },
+      },
+    },
+  ]);
+
+  const stockMap = stockInfo.reduce((acc, s) => {
+    acc[s._id.toString()] = s.total;
+    return acc;
+  }, {});
+
+  const outOfStockIds = outOfStockIngredients.filter((id) => !stockMap[id.toString()] || stockMap[id.toString()] <= 0);
+
+  // 6️⃣ Update trạng thái nguyên liệu hết hàng (bulk)
+  if (outOfStockIds.length > 0) {
+    await Ingredient.updateMany({ _id: { $in: outOfStockIds } }, { $set: { status: "OUT_OF_STOCK" } });
   }
 };
 
@@ -488,7 +604,11 @@ const completeCart = async (req, res) => {
     const cart = await Cart.findOne({ userId, storeId });
     if (!cart) throw new Error("Cart not found");
 
-    const cartItems = await CartItem.find({ cartId: cart._id }).populate("dish").populate("toppings");
+    const cartItems = await CartItem.find({ cartId: cart._id })
+      .lean()
+      .populate("dish", "price name")
+      .populate("toppings", "price toppingName");
+
     if (!cartItems.length) throw new Error("Cart is empty");
 
     await checkCartInventory(storeId, cartItems);
@@ -544,39 +664,43 @@ const completeCart = async (req, res) => {
 
     // --- order items ---
     let totalCost = 0;
-    for (const item of cartItems) {
-      const ingredientCost = await calculateIngredientCost(
-        storeId,
-        item.dish._id,
-        item.quantity,
-        item.toppings?.map((t) => t._id) || []
-      );
+    await Promise.all(
+      cartItems.map(async (item) => {
+        const ingredientCost = await calculateIngredientCost(
+          storeId,
+          item.dish._id,
+          item.quantity,
+          item.toppings?.map((t) => t._id) || []
+        );
 
-      await consumeIngredients(storeId, item.dish._id, item.quantity, item.toppings?.map((t) => t._id) || []);
+        await consumeIngredients(storeId, item.dish._id, item.quantity, item.toppings?.map((t) => t._id) || []);
 
-      totalCost += ingredientCost;
+        totalCost += ingredientCost;
 
-      const orderItem = await OrderItem.create({
-        orderId: newOrder._id,
-        dishId: item.dish?._id,
-        dishName: item.dishName,
-        price: item.price,
-        quantity: item.quantity,
-        note: item.note || "",
-        cost: ingredientCost,
-      });
+        const orderItem = await OrderItem.create({
+          orderId: newOrder._id,
+          dishId: item.dish?._id,
+          dishName: item.dishName,
+          price: item.price,
+          quantity: item.quantity,
+          note: item.note || "",
+          cost: ingredientCost,
+        });
 
-      if (Array.isArray(item.toppings) && item.toppings.length) {
-        for (const topping of item.toppings) {
-          await OrderItemTopping.create({
-            orderItemId: orderItem._id,
-            toppingId: topping._id,
-            toppingName: topping.toppingName,
-            price: topping.price,
-          });
+        if (Array.isArray(item.toppings) && item.toppings.length) {
+          await Promise.all(
+            item.toppings.map((topping) =>
+              OrderItemTopping.create({
+                orderItemId: orderItem._id,
+                toppingId: topping._id,
+                toppingName: topping.toppingName,
+                price: topping.price,
+              })
+            )
+          );
         }
-      }
-    }
+      })
+    );
 
     newOrder.totalCost = totalCost;
     await newOrder.save();
@@ -593,55 +717,22 @@ const completeCart = async (req, res) => {
     });
 
     // --- vouchers ---
-    for (const { voucher, discount } of validVouchers) {
-      await OrderVoucher.create({
-        orderId: newOrder._id,
-        voucherId: voucher._id,
-        discountAmount: discount,
-      });
-
-      voucher.usedCount = (voucher.usedCount || 0) + 1;
-      await voucher.save();
-
-      await UserVoucherUsage.findOneAndUpdate(
-        { userId, voucherId: voucher._id },
-        { $inc: { usedCount: 1 }, startDate: voucher.startDate },
-        { upsert: true, new: true }
-      );
-    }
+    await Promise.all(
+      validVouchers.map(async ({ voucher, discount }) => {
+        await OrderVoucher.create({ orderId: newOrder._id, voucherId: voucher._id, discountAmount: discount });
+        await Voucher.findByIdAndUpdate(voucher._id, { $inc: { usedCount: 1 } });
+        await UserVoucherUsage.findOneAndUpdate(
+          { userId, voucherId: voucher._id },
+          { $inc: { usedCount: 1 }, startDate: voucher.startDate },
+          { upsert: true, new: true }
+        );
+      })
+    );
 
     // --- clear cart ---
     await CartItemTopping.deleteMany({ cartItemId: { $in: cartItems.map((i) => i._id) } });
     await CartItem.deleteMany({ cartId: cart._id });
     await Cart.findByIdAndDelete(cart._id);
-
-    // --- notification ---
-    const store = await Store.findById(storeId);
-    const newNotification = await Notification.create({
-      userId: store.owner,
-      orderId: newOrder._id,
-      title: "New Order has been placed",
-      message: "You have a new order!",
-      type: "order",
-      status: "unread",
-    });
-
-    if (storeSockets[storeId]) {
-      storeSockets[storeId].forEach((socketId) => {
-        const io = getIo();
-        io.to(socketId).emit("newOrderNotification", {
-          notification: newNotification,
-          order: {
-            id: newOrder._id,
-            customerName,
-            totalPrice: newOrder.finalTotal,
-            status: newOrder.status,
-            createdAt: newOrder.createdAt,
-          },
-          userId: userId,
-        });
-      });
-    }
 
     return res.status(201).json({
       success: true,

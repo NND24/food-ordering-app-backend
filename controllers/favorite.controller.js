@@ -9,7 +9,7 @@ const getUserFavorite = async (req, res) => {
 
     const favorite = await Favorite.findOne({ userId })
       .populate({
-        path: "store",
+        path: "storeId",
         select: "name avatar status storeCategory",
         populate: {
           path: "storeCategory",
@@ -24,7 +24,7 @@ const getUserFavorite = async (req, res) => {
       });
     }
 
-    favorite.storeId = favorite.storeId.filter((store) => store.status === "APPROVED");
+    favorite.storeId = (favorite.storeId || []).filter((store) => store.status === "APPROVED");
 
     const storeRatings = await Rating.aggregate([
       { $group: { _id: "$storeId", avgRating: { $avg: "$ratingValue" }, amountRating: { $sum: 1 } } },
@@ -72,7 +72,7 @@ const addFavorite = async (req, res) => {
       // If the user has no favorites, create a new entry
       favoriteRecord = new Favorite({
         userId,
-        store: [storeId],
+        storeId: [storeId],
       });
     } else {
       // Prevent duplicate store entries

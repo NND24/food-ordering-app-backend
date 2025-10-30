@@ -69,7 +69,7 @@ const getAllStore = async (req, res) => {
     ]);
 
     stores = stores.map((store) => {
-      const rating = storeRatings.find((r) => r._id.toString() === store._id.toString());
+      const rating = storeRatings.find((r) => r._id && store._id && r._id.toString() === store._id.toString());
       return {
         ...store,
         avgRating: rating ? rating.avgRating : 0,
@@ -115,7 +115,7 @@ const getAllStore = async (req, res) => {
 
       stores = stores
         .map((store) => {
-          const order = storeOrders.find((o) => o._id.toString() === store._id.toString());
+          const order = storeOrders.find((o) => o._id && store._id && o._id.toString() === store._id.toString());
           return {
             ...store,
             orderCount: order ? order.orderCount : 0,
