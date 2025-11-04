@@ -17,4 +17,10 @@ var favoriteSchema = new mongoose.Schema({
   ],
 });
 
+favoriteSchema.virtual("store", {
+  ref: "Store",
+  localField: "storeId",
+  foreignField: "_id",
+});
+
 module.exports = mongoose.model("Favorite", favoriteSchema);

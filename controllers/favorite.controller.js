@@ -24,15 +24,24 @@ const getUserFavorite = async (req, res) => {
       });
     }
 
-    favorite.storeId = (favorite.storeId || []).filter((store) => store.status === "APPROVED");
+    let stores = (favorite.storeId || []).filter((store) => store.status === "APPROVED");
 
     const storeRatings = await Rating.aggregate([
       { $group: { _id: "$storeId", avgRating: { $avg: "$ratingValue" }, amountRating: { $sum: 1 } } },
     ]);
-    favorite.storeId = favorite.storeId.map((store) => {
-      const rating = storeRatings.find((r) => r._id.toString() == store._id.toString());
-      return { ...store, avgRating: rating ? rating.avgRating : 0, amountRating: rating ? rating.amountRating : 0 };
+
+    stores = stores.map((store) => {
+      const rating = storeRatings.find((r) => r._id.toString() === store._id.toString());
+      return {
+        ...store,
+        avgRating: rating ? rating.avgRating : 0,
+        amountRating: rating ? rating.amountRating : 0,
+      };
     });
+
+    // 🔁 Gán lại với key mới
+    favorite.store = stores;
+    delete favorite.storeId;
 
     res.status(200).json({
       success: true,

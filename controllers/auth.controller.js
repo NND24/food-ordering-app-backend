@@ -14,11 +14,11 @@ const hashPassword = (password, salt) => {
 };
 
 const generateAccessToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "1d" });
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "5d" });
 };
 
 const generateAccessAdminToken = (id, role) => {
-  return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "1d" });
+  return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "5d" });
 };
 
 const generateRefreshToken = (id) => {
@@ -32,9 +32,7 @@ const storeOwnByUser = asyncHandler(async (req, res, next) => {
   });
 
   if (!findStore) {
-    return res
-      .status(404)
-      .json({ success: false, message: "No store found for this user" });
+    return res.status(404).json({ success: false, message: "No store found for this user" });
   }
 
   res.status(200).json({ data: findStore });
@@ -51,9 +49,7 @@ const register = asyncHandler(async (req, res, next) => {
       gender,
       password,
     });
-    res
-      .status(201)
-      .json({ success: true, message: "Tạo tài khoản thành công" });
+    res.status(201).json({ success: true, message: "Tạo tài khoản thành công" });
   } else {
     next(createError(409, { success: false, message: "Tài khoản đã tồn tại" }));
   }
@@ -165,11 +161,7 @@ const login = asyncHandler(async (req, res, next) => {
 
   if (findUser && (await findUser.isPasswordMatched(password))) {
     const refreshToken = generateRefreshToken(findUser._id);
-    await User.findByIdAndUpdate(
-      findUser._id,
-      { refreshToken: refreshToken },
-      { new: true }
-    );
+    await User.findByIdAndUpdate(findUser._id, { refreshToken: refreshToken }, { new: true });
     // Check if the user is associated with a store
     const store = await Store.findOne({
       $or: [{ owner: findUser._id }, { staff: findUser._id }],
@@ -183,8 +175,7 @@ const login = asyncHandler(async (req, res, next) => {
       _id: findUser._id,
       token: generateAccessToken(findUser._id),
       ...(getRole === "true" && { role: findUser.role }), // Include role if getRole is true
-      ...(getStore === "true" &&
-        store && { storeId: store._id, ownerId: store.owner }), // Include storeId & name if requested
+      ...(getStore === "true" && store && { storeId: store._id, ownerId: store.owner }), // Include storeId & name if requested
     });
   } else {
     return next(
@@ -221,9 +212,7 @@ const registerStore = asyncHandler(async (req, res) => {
     }
 
     // 2. Kiểm tra user đã có store chưa
-    const existedStore = await Store.findOne({ owner: ownerId }).session(
-      session
-    );
+    const existedStore = await Store.findOne({ owner: ownerId }).session(session);
     if (existedStore) {
       await session.abortTransaction();
       session.endSession();
@@ -292,10 +281,7 @@ const googleLoginWithToken = asyncHandler(async (req, res, next) => {
   try {
     const { token } = req.body;
     console.log(token);
-    if (!token)
-      return res
-        .status(400)
-        .json({ success: false, message: "No token provided" });
+    if (!token) return res.status(400).json({ success: false, message: "No token provided" });
 
     const ticket = await client.verifyIdToken({
       idToken: token,
@@ -310,8 +296,7 @@ const googleLoginWithToken = asyncHandler(async (req, res, next) => {
       newUser = new User({
         name: payload.name,
         email: payload.email,
-        password:
-          "zxczczczcasfafhgmjh,hnfhrhdssdsdvsvx1232311131684535252131sdvvsvs",
+        password: "zxczczczcasfafhgmjh,hnfhrhdssdsdvsvx1232311131684535252131sdvvsvs",
         avatar: {
           filePath: "",
           url: payload.picture,
@@ -356,9 +341,7 @@ const googleLoginWithToken = asyncHandler(async (req, res, next) => {
           token: generateAccessToken(user?._id),
         });
       } else {
-        next(
-          createError(409, { success: false, message: "Tài khoản đã tồn tại" })
-        );
+        next(createError(409, { success: false, message: "Tài khoản đã tồn tại" }));
       }
     }
   } catch (error) {
@@ -420,10 +403,7 @@ const logout = asyncHandler(async (req, res, next) => {
   const refreshToken = cookie.refreshToken;
   const user = await User.findOne({ refreshToken });
   if (user) {
-    await User.findOneAndUpdate(
-      { refreshToken },
-      { $set: { refreshToken: null } }
-    );
+    await User.findOneAndUpdate({ refreshToken }, { $set: { refreshToken: null } });
   }
 
   res.clearCookie("refreshToken", {
@@ -450,17 +430,11 @@ const changePassword = asyncHandler(async (req, res, next) => {
 
   // Find the user
   const user = await User.findById(_id);
-  if (!user)
-    return next(
-      createError(404, { success: false, message: "User not found" })
-    );
+  if (!user) return next(createError(404, { success: false, message: "User not found" }));
 
   // Kiểm tra mật khẩu cũ
   const isMatch = await user.isPasswordMatched(oldPassword);
-  if (!isMatch)
-    return next(
-      createError(400, { success: false, message: "Mật khẩu cũ không đúng" })
-    );
+  if (!isMatch) return next(createError(400, { success: false, message: "Mật khẩu cũ không đúng" }));
 
   user.password = newPassword;
   await user.save();
@@ -472,10 +446,7 @@ const resetPassword = asyncHandler(async (req, res, next) => {
   const { email, newPassword } = req.body;
 
   const user = await User.findOne({ email });
-  if (!user)
-    return next(
-      createError(404, { success: false, message: "User not found" })
-    );
+  if (!user) return next(createError(404, { success: false, message: "User not found" }));
 
   user.password = newPassword;
   await user.save();
@@ -490,8 +461,7 @@ const forgotPassword = asyncHandler(async (req, res, next) => {
     return next(
       createError("404", {
         success: false,
-        message:
-          "Tài khoản không tồn tại hoặc tài khoản được đăng nhập bằng phương thức khác",
+        message: "Tài khoản không tồn tại hoặc tài khoản được đăng nhập bằng phương thức khác",
       })
     );
 
