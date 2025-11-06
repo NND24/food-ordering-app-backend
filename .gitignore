@@ -6,10 +6,10 @@
 /.pnp
 .pnp.js
 package-lock.json
-
-
+/ml/venv
 /ml/recommendDishDataset
 /ml/__pycache__
+/ml/finetuned_food_model
 
 # env files (can opt-in for commiting if needed)
 .env
@@ -22,6 +22,7 @@ package-lock.json
 /build
 
 # misc
+.vscode
 .DS_Store
 .env
 .env.development.local

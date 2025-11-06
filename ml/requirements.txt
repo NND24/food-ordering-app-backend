@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pydantic
+pandas
+numpy
+scipy
+statsmodels
+transformers
+torch
+Pillow
+requests

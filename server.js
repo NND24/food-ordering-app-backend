@@ -50,6 +50,9 @@ const ingredientBatchRoute = require("./routes/ingredientBatch.routes");
 const wasteRoute = require("./routes/waste.routes");
 const unitRoute = require("./routes/unit.routes");
 
+const adminStoreRoute = require("./routes/adminStore.routes");
+const adminAccountRoute = require("./routes/adminAccount.routes");
+
 const app = express();
 connectDB();
 require("./config/expireBatches");
@@ -123,6 +126,11 @@ wasteRoute;
 app.use("/api/v1/ingredient-batch", ingredientBatchRoute);
 app.use("/api/v1/waste", wasteRoute);
 app.use("/api/v1/unit", unitRoute);
+
+// Admin route
+app.use("/api/v1/admin/stores", adminStoreRoute);
+app.use("/api/v1/admin/accounts", adminAccountRoute);
+
 app.use(errorHandler);
 
 const server = http.createServer(app);
