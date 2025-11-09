@@ -7,10 +7,16 @@ const mongoose = require("mongoose");
 
 const getStoreDishGroups = asyncHandler(async (req, res, next) => {
   const { storeId } = req.params;
+  const { activeOnly } = req.query;
 
-  const dishGroups = await DishGroup.find({
-    storeId,
-  }).populate("dishes");
+  if (!storeId) return res.status(400).json({ success: false, message: "storeId is required" });
+
+  const query = { storeId };
+  if (activeOnly === "true") {
+    query.isActive = true;
+  }
+
+  const dishGroups = await DishGroup.find(query).populate("dishes");
 
   res.status(200).json({
     success: true,

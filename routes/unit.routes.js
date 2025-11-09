@@ -4,7 +4,7 @@ const { createUnit, getUnits, getUnitById, updateUnit, deleteUnit } = require(".
 const router = express.Router();
 
 router.post("/", createUnit); // Tạo unit mới
-router.get("/", getUnits); // Lấy tất cả units
+router.get("/store/:storeId", getUnits); // Lấy tất cả units
 router.get("/:id", getUnitById); // Lấy unit theo ID
 router.put("/:id", updateUnit); // Cập nhật unit
 router.delete("/:id", deleteUnit); // Xóa (deactivate) unit
