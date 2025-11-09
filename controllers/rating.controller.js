@@ -9,11 +9,19 @@ const { getStoreIdFromUser } = require("../utils/getStoreIdFromUser");
 const getAllStoreRating = asyncHandler(async (req, res, next) => {
   try {
     const { storeId } = req.params;
+    const { limit = 10, page = 1 } = req.query;
 
     if (!storeId) {
       return next(createError(400, "Store ID is required"));
     }
 
+    const pageSize = parseInt(limit);
+    const pageNumber = parseInt(page);
+
+    // Đếm tổng số rating
+    const total = await Rating.countDocuments({ storeId });
+
+    // Query rating có phân trang
     const ratings = await Rating.find({ storeId })
       .populate({
         path: "user",
@@ -26,11 +34,18 @@ const getAllStoreRating = asyncHandler(async (req, res, next) => {
           { path: "user", select: "name avatar" },
           { path: "items", populate: { path: "toppings" } },
         ],
-      });
+      })
+      .sort({ createdAt: -1 }) // sắp xếp đánh giá mới nhất lên đầu
+      .skip((pageNumber - 1) * pageSize)
+      .limit(pageSize);
 
     res.status(200).json({
       success: true,
       message: "Ratings retrieved successfully",
+      total,
+      totalPages: Math.ceil(total / pageSize),
+      currentPage: pageNumber,
+      pageSize,
       data: ratings,
     });
   } catch (error) {

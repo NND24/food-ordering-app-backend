@@ -243,6 +243,12 @@ const getDetailDish = async (req, res) => {
     const dish = await Dish.findById(dishId).populate([
       {
         path: "toppingGroups",
+        match: { isActive: true },
+        populate: {
+          path: "toppings",
+          match: { status: { $in: ["ACTIVE", "OUT_OF_STOCK"] } },
+          select: "name price status",
+        },
       },
     ]);
 
@@ -253,24 +259,9 @@ const getDetailDish = async (req, res) => {
       });
     }
 
-    const toppingGroupsWithToppings = await Promise.all(
-      dish.toppingGroups.map(async (group) => {
-        const toppings = await Topping.find({ toppingGroupId: group._id }).select("name price");
-        return {
-          ...group.toObject(),
-          toppings,
-        };
-      })
-    );
-
-    const dishWithToppings = {
-      ...dish.toObject(),
-      toppingGroups: toppingGroupsWithToppings,
-    };
-
     res.status(200).json({
       success: true,
-      data: dishWithToppings,
+      data: dish,
     });
   } catch (error) {
     if (error.name === "CastError") {

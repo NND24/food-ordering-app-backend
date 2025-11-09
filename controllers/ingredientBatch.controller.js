@@ -86,7 +86,10 @@ const getBatchById = asyncHandler(async (req, res) => {
 const getBatchesByStore = asyncHandler(async (req, res) => {
   try {
     const { storeId } = req.params;
-    const batches = await IngredientBatch.find({ storeId }).populate("ingredient").populate("storeId");
+    const batches = await IngredientBatch.find({ storeId })
+      .populate("ingredient")
+      .populate("storeId")
+      .sort({ updatedAt: -1 });
     res.status(200).json({ success: true, data: batches });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

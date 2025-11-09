@@ -42,7 +42,13 @@ const getToppingGroupById = asyncHandler(async (req, res, next) => {
   const { groupId } = req.params;
   if (!groupId) return next(createError(400, "Group ID is required"));
 
-  const group = await ToppingGroup.findById(groupId).populate("toppings");
+  const group = await ToppingGroup.findById(groupId).populate({
+    path: "toppings",
+    populate: {
+      path: "ingredients.ingredient",
+      model: "Ingredient",
+    },
+  });
   if (!group) return next(createError(404, "Topping group not found"));
 
   res.status(200).json(successResponse(group, "Topping group retrieved successfully"));
