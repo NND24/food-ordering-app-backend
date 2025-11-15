@@ -260,18 +260,22 @@ const updateCart = async (req, res) => {
 
     // Validate toppings
     if (toppings.length > 0) {
-      const toppingGroups = await ToppingGroup.find({ storeId: storeId }).select("_id");
-      const toppingGroupIds = toppingGroups.map((g) => g._id);
 
-      const validToppings = await Topping.find({ toppingGroupId: { $in: toppingGroupIds } });
-      const validToppingIds = new Set(validToppings.map((t) => t._id.toString()));
+      const toppingGroups = await ToppingGroup.find({ storeId: storeId }).select("toppings");
+      let validToppingIds = new Set();
+      toppingGroups.forEach((group) => {
+        group.toppings.forEach((toppingId) => {
+          validToppingIds.add(toppingId.toString());
+        });
+      });
 
       const invalidToppings = toppings.filter((tid) => !validToppingIds.has(tid.toString()));
 
       if (invalidToppings.length > 0) {
         return res.status(400).json({
           success: false,
-          message: "Some toppings are not valid for this store",
+          // message: "Some selected toppings are not available or configured for this store's groups.",
+          message: `Một số topping không hợp lệ cho các nhóm của cửa hàng.`,
         });
       }
     }
