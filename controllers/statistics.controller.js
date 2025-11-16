@@ -324,15 +324,9 @@ const analyzeBusinessResult = asyncHandler(async (req, res) => {
     ];
 
     const stableTemplates = [
-      `🍽 Trong khoảng ${period}, các món ${dishes
-        .map((d) => `"${d.name}"`)
-        .join(", ")} đều có doanh số ổn định — nên duy trì nguyên liệu và dự báo nhập hàng hợp lý.`,
-      `🥗 Giai đoạn ${period} cho thấy sức mua ổn định ở các món ${dishes
-        .map((d) => `"${d.name}"`)
-        .join(", ")} — phù hợp để giữ nguyên giá và chiến lược hiện tại.`,
-      `🧾 Các món ${dishes
-        .map((d) => `"${d.name}"`)
-        .join(", ")} duy trì doanh số tốt trong ${period} — nên tập trung đảm bảo chất lượng phục vụ.`,
+      `🍽 Trong khoảng ${period}, các món ${dishes.map((d) => `"${d.name}"`).join(", ")} đều có doanh số ổn định.`,
+      `🥗 Giai đoạn ${period} cho thấy sức mua ổn định ở các món ${dishes.map((d) => `"${d.name}"`).join(", ")}.`,
+      `🧾 Các món ${dishes.map((d) => `"${d.name}"`).join(", ")} duy trì doanh số tốt trong ${period}.`,
     ];
 
     const weakTemplates = [

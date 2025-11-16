@@ -15,14 +15,32 @@ const users = [
   "688fa056e6331452d7ba9d89",
   "6890df653720d74ecfb9e83f",
 ];
-const stores = ["6809a3e2e1b83a3af1175d17"];
+const stores = ["67c6e409f1c07122e88619d6"];
 const dishes = [
-  { id: "6814c4d38a256219c84a4b01", name: "Cơm trắng + Cải thìa + Bắp mĩ", price: 12000 },
-  { id: "6814c4f98a256219c84a4b02", name: "CƠM TRỘN ĐÙI GÀ", price: 53000 },
-  { id: "6814c55b8a256219c84a4b03", name: "CƠM TRỘN XÁ XÍU", price: 42000 },
-  { id: "6814c5768a256219c84a4b04", name: "CƠM TRỘN THỊT BĂM", price: 38000 },
-  { id: "6814c58f8a256219c84a4b05", name: "CƠM TRỘN XÚC XÍCH", price: 37000 },
-  { id: "6814c58f8a256219c84a4b05", name: "CƠM TRỘN XÚC XÍCH", price: 37000 },
+  { id: "67c997016e1a0a74d0efc6ae", name: "Gà Rán 1 Miếng", price: 30000 },
+  { id: "68157ea718a6b80afd2e90c3", name: "Gà Rán 3 Miếng", price: 85000 },
+  { id: "68157ed618a6b80afd2e90c4", name: "Gà Rán 6 Miếng", price: 200000 },
+  { id: "68157e6e18a6b80afd2e90c2", name: "Gà Rán Phần", price: 87000 },
+  { id: "68157eed18a6b80afd2e90c5", name: "Gà Sốt HS 1 Miếng", price: 41000 },
+  { id: "68157f0118a6b80afd2e90c6", name: "Gà Sốt HS Phần", price: 95000 },
+  { id: "68d2b73152536554b56bc852", name: "Gà Sốt HS 2 Miếng", price: 80000 },
+  { id: "67c6e40af1c07122e88619e8", name: "Value Burger Tôm", price: 85000 },
+  { id: "67c91ff49a1fffb184941d3a", name: "Combo Burger Bulgogi", price: 82000 },
+  { id: "68157b8518a6b80afd2e90b3", name: "Value Burger Bulgogi", price: 88000 },
+  { id: "68157bb918a6b80afd2e90b4", name: "Combo Burger Lchicken", price: 88000 },
+  { id: "68157c1518a6b80afd2e90b5", name: "Value Burger Lchicken", price: 89000 },
+  { id: "68157c3818a6b80afd2e90b6", name: "Combo Burger Double Double", price: 102000 },
+  { id: "68157c6918a6b80afd2e90b7", name: "Value Burger Double Double", price: 119000 },
+  { id: "68157c8c18a6b80afd2e90b8", name: "Combo Burger Mozzarella", price: 109000 },
+  { id: "68157cad18a6b80afd2e90b9", name: "Value Burger Mozzarella", price: 122000 },
+  { id: "68157cd218a6b80afd2e90ba", name: "Combo Burger Bò", price: 58000 },
+  { id: "68157d0018a6b80afd2e90bb", name: "Value Burger Bò", price: 68000 },
+  { id: "68157d2b18a6b80afd2e90bc", name: "Combo Burger Phô Mai", price: 74000 },
+  { id: "68157d5218a6b80afd2e90bd", name: "Value Burger Phô Mai", price: 81000 },
+  { id: "68157d8618a6b80afd2e90be", name: "Combo Burger Cá", price: 68000 },
+  { id: "68157da918a6b80afd2e90bf", name: "Value Burger Cá", price: 75000 },
+  { id: "68157dd418a6b80afd2e90c0", name: "Combo Burger Bò Teriyaki", price: 72000 },
+  { id: "68157dd418a6b80afd2e90c1", name: "Value Burger Bò Teriyaki", price: 79000 },
 ];
 
 // random cost dựa trên price, margin 20–40%
@@ -122,14 +140,14 @@ function generateOrderShipInfos(orders) {
 }
 
 // 1. Tạo orders và orderItems trước
-const { orders, orderItems } = generateOrders(30);
+const { orders, orderItems } = generateOrders(1200);
 
 // 2. Tạo orderShipInfos dựa trên orders vừa tạo
 const orderShipInfos = generateOrderShipInfos(orders);
 
 // 3. Ghi ra file JSON
-fs.writeFileSync("orders_6809a3e2e1b83a3af1175d17.json", JSON.stringify(orders, null, 2));
-fs.writeFileSync("orderItems_6809a3e2e1b83a3af1175d17.json", JSON.stringify(orderItems, null, 2));
-fs.writeFileSync("orderShipInfos_6809a3e2e1b83a3af1175d17.json", JSON.stringify(orderShipInfos, null, 2));
+fs.writeFileSync("orders_67c6e409f1c07122e88619d6.json", JSON.stringify(orders, null, 2));
+fs.writeFileSync("orderItems_67c6e409f1c07122e88619d6.json", JSON.stringify(orderItems, null, 2));
+fs.writeFileSync("orderShipInfos_67c6e409f1c07122e88619d6.json", JSON.stringify(orderShipInfos, null, 2));
 
 console.log("Đã tạo orders.json, orderItems.json và orderShipInfos.json!");

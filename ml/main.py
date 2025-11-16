@@ -203,7 +203,7 @@ def analyze(req: AnalyzeRequest, period_type: str = "hour"):
 
     if forecast.get("predictedRevenue"):
         insight_messages.append(
-            f"🔮 Kỳ tới: doanh thu {forecast['predictedRevenue']:,.0f} ₫, lợi nhuận {forecast['predictedProfit']:,.0f} ₫."
+            f"Kỳ tới: doanh thu {forecast['predictedRevenue']:,.0f} ₫, lợi nhuận {forecast['predictedProfit']:,.0f} ₫."
         )
 
     # -----------------------------
@@ -242,13 +242,26 @@ def analyze(req: AnalyzeRequest, period_type: str = "hour"):
             f"💰 Dự báo: doanh thu {next_revenue:,.0f} ₫, lợi nhuận {next_profit:,.0f} ₫."
         )
 
-    return clean_invalid_values({
-        "decomposition": decomposition,
-        "forecast": forecast,
-        "insightMessages": insight_messages,
-        "simulatedForecast": simulated_forecast,
-        "scenarioInsights": scenario_insights,
-    })
+    def round_values(obj, digits=2):
+        if isinstance(obj, float):
+            return round(obj, digits)
+        if isinstance(obj, list):
+            return [round_values(x, digits) for x in obj]
+        if isinstance(obj, dict):
+            return {k: round_values(v, digits) for k, v in obj.items()}
+        return obj
+
+    return round_values(
+        clean_invalid_values({
+            "decomposition": decomposition,
+            "forecast": forecast,
+            "insightMessages": insight_messages,
+            "simulatedForecast": simulated_forecast,
+            "scenarioInsights": scenario_insights,
+        }),
+        digits=2
+    )
+
 
 
 # ====== BƯỚC 1: BLIP sinh mô tả tiếng Anh ======
