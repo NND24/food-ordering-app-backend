@@ -1,6 +1,7 @@
 const asyncHandler = require("express-async-handler");
 const DishGroup = require("../models/dishGroup.model");
 const Dish = require("../models/dish.model");
+const Store = require("../models/store.model");
 const createError = require("../utils/createError");
 const successResponse = require("../utils/successResponse");
 const mongoose = require("mongoose");
@@ -59,9 +60,13 @@ const createDish = asyncHandler(async (req, res, next) => {
     return next(createError(400, "All fields are required"));
   }
 
+  const store = await Store.findById(storeId).select("storeCategory");
+
+  if (!store) return next(createError(404, "Store not found"));
+
   const isValidCategory = store.storeCategory.some((catId) => catId.equals(category));
   if (!isValidCategory) {
-    return next(createError(400, "Danh mục này không thuộc về các category mà cửa hàng đã đăng ký"));
+    return next(createError(400, "Danh mục này không thuộc về các danh mục mà cửa hàng đã đăng ký"));
   }
 
   const dish = await Dish.create({

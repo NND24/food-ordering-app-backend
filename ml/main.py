@@ -145,7 +145,7 @@ def analyze(req: AnalyzeRequest, period_type: str = "hour"):
             "seasonal": seasonal.tolist(),
             "resid": (ts - trend - seasonal).fillna(0).tolist(),
             "periodUsed": decomp_period,
-            "note": f"⚠️ Not enough data for full decomposition, using rolling instead: {str(e)}"
+            "note": f"Not enough data for full decomposition, using rolling instead: {str(e)}"
         }
 
     # -----------------------------
@@ -186,20 +186,20 @@ def analyze(req: AnalyzeRequest, period_type: str = "hour"):
 
     insight_messages = []
     if trend_mean > 0:
-        insight_messages.append("📈 Xu hướng tăng: doanh thu có chiều hướng đi lên.")
+        insight_messages.append("Xu hướng tăng: doanh thu có chiều hướng đi lên.")
         if trend_mean > 500:
-            insight_messages.append("🚀 Mức tăng mạnh — có thể do marketing hoặc nhu cầu tăng.")
+            insight_messages.append("Mức tăng mạnh — có thể do marketing hoặc nhu cầu tăng.")
     elif trend_mean < 0:
-        insight_messages.append("📉 Xu hướng giảm: doanh thu có dấu hiệu đi xuống.")
+        insight_messages.append("Xu hướng giảm: doanh thu có dấu hiệu đi xuống.")
         if trend_mean < -500:
-            insight_messages.append("⚠️ Cần xem lại giá bán hoặc chiến dịch quảng bá.")
+            insight_messages.append("Cần xem lại giá bán hoặc chiến dịch quảng bá.")
     else:
-        insight_messages.append("➡️ Xu hướng ổn định.")
+        insight_messages.append("Xu hướng ổn định.")
 
     if seasonal_strength == "mạnh":
-        insight_messages.append("🌤 Mùa vụ rõ rệt: có giai đoạn cao điểm – thấp điểm.")
+        insight_messages.append("Mùa vụ rõ rệt: có giai đoạn cao điểm – thấp điểm.")
     else:
-        insight_messages.append("🌤 Mùa vụ yếu: doanh thu khá đều.")
+        insight_messages.append("Mùa vụ yếu: doanh thu khá đều.")
 
     if forecast.get("predictedRevenue"):
         insight_messages.append(

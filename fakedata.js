@@ -44,7 +44,7 @@ function generateOrders(numOrders) {
     const storeId = stores[Math.floor(Math.random() * stores.length)];
     const status = "done";
     const paymentMethod = faker.helpers.arrayElement(["cash", "card"]);
-    const createdAt = randomDate(new Date("2025-10-01"), new Date("2025-10-31"));
+    const createdAt = randomDate(new Date("2025-11-01"), new Date("2025-12-31"));
 
     const dish = dishes[Math.floor(Math.random() * dishes.length)];
     const quantity = faker.number.int({ min: 1, max: 3 });
