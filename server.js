@@ -61,17 +61,11 @@ require("./config/recommendData.cron");
 app.use(morgan("dev"));
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:3002",
-      "http://192.168.1.10:3000",
-      "http://192.168.56.1:3000",
-      "http://192.168.56.1:3002",
-    ],
+    origin: true,
     credentials: true,
   })
 );
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());

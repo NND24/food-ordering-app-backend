@@ -21,6 +21,7 @@ const createUnit = asyncHandler(async (req, res) => {
 
     res.status(201).json({ success: true, data: unit });
   } catch (err) {
+    console.log(err);
     if (err.code === 11000)
       return res.status(400).json({ success: false, message: "Duplicate unit name in this store" });
 
