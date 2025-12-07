@@ -1,13 +1,9 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from transformers import (
     AutoImageProcessor, 
     AutoModelForImageClassification,
-    BlipProcessor,
-    BlipForConditionalGeneration,
-    AutoTokenizer,
-    AutoModelForSeq2SeqLM,
 )
 from PIL import Image
 import requests
@@ -21,6 +17,7 @@ import numpy as np
 import logging
 import io
 import random
+import httpx
 
 logger = logging.getLogger("uvicorn")
 
@@ -263,41 +260,6 @@ def analyze(req: AnalyzeRequest, period_type: str = "hour"):
     )
 
 
-
-# ====== BƯỚC 1: BLIP sinh mô tả tiếng Anh ======
-processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
-model = BlipForConditionalGeneration.from_pretrained(
-    "Salesforce/blip-image-captioning-large"
-).to("cuda" if torch.cuda.is_available() else "cpu")
-
-# ====== BƯỚC 2: Model dịch & viết lại tiếng Việt ======
-translator_tokenizer = AutoTokenizer.from_pretrained("VietAI/envit5-translation")
-translator_model = AutoModelForSeq2SeqLM.from_pretrained("VietAI/envit5-translation").to(
-    "cuda" if torch.cuda.is_available() else "cpu"
-)
-
-def improve_vietnamese_caption(english_caption: str) -> str:
-    prompt = f"Translate to Vietnamese: {english_caption}"
-    inputs = translator_tokenizer(prompt, return_tensors="pt").to(translator_model.device)
-    output = translator_model.generate(**inputs, max_new_tokens=100)
-    vi_caption = translator_tokenizer.decode(output[0], skip_special_tokens=True)
-    return vi_caption.strip()
-
-
-@app.post("/caption")
-def caption(url: str):
-    # ==== Bước 1: tạo mô tả tiếng Anh ====
-    image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
-    inputs = processor(image, return_tensors="pt").to(model.device)
-    out = model.generate(**inputs, max_new_tokens=50)
-    english_caption = processor.decode(out[0], skip_special_tokens=True)
-
-    # ==== Bước 2: dịch & cải thiện ====
-    vietnamese_caption = improve_vietnamese_caption(english_caption)
-
-    return {"caption_en": english_caption, "caption_vi": vietnamese_caption}
-
-
 # AI sinh mô tả từ ảnh
 try:
     from food_info import food_info
@@ -313,11 +275,11 @@ model_cls = None
 def normalize_label(label: str):
     return label.lower().replace("-", " ").replace("_", " ").strip()
 
-food_info_norm = {} # sẽ được điền khi startup
+food_info_norm = {}
 
 # Hàm classify (Từ code mới của bạn)
-def classify_food_topk(image_pil: Image.Image, top_k: int = 3):
-    """Phân loại ảnh."""
+def classify_food(image_pil: Image.Image):
+    """Phân loại ảnh và chỉ trả về kết quả có độ chính xác cao nhất."""
     if model_cls is None or processor_cls is None:
         raise HTTPException(status_code=503, detail="Dịch vụ model chưa sẵn sàng.")
         
@@ -327,61 +289,75 @@ def classify_food_topk(image_pil: Image.Image, top_k: int = 3):
         outputs = model_cls(**inputs)
     
     probabilities = torch.nn.functional.softmax(outputs.logits, dim=-1)[0]
-    topk_prob, topk_indices = torch.topk(probabilities, top_k)
+    _, top_index = torch.max(probabilities, dim=-1)
+    label = model_cls.config.id2label[top_index.item()]
     
-    results = []
-    for prob, index in zip(topk_prob.tolist(), topk_indices.tolist()):
-        label = model_cls.config.id2label[index]
-        results.append({"label": label, "score": round(prob, 4)})
-        
-    return results
+    return label
 
 # Hàm sinh mô tả (Từ code mới của bạn)
-def generate_description(label: str):
+# Hàm sinh mô tả (ĐÃ SỬA LỖI LOGIC VÀ THỨ TỰ)
+def generate_caption(label: str, user_extras: List[str] = None) -> str:
+    # 0. Chuẩn bị dữ liệu và kiểm tra Fallback 1
+    # Làm sạch, chuyển chữ thường và lọc bỏ phần tử rỗng cho user_extras
+    user_extras = [item.strip().lower() for item in user_extras if item.strip()] if user_extras else []
+    
     label_norm = normalize_label(label)
-    info = food_info_norm.get(label_norm) 
+    info = food_info_norm.get(label_norm)
 
     if not info:
-        return [f"Món {label} thơm ngon, hấp dẫn, chắc chắn làm hài lòng thực khách."]
+        return f"Món {label} thơm ngon, hấp dẫn, chắc chắn làm hài lòng thực khách."
 
-    # Đảm bảo các key tồn tại
-    display_name = info.get("display_name", label) 
-    ingredients = info.get("ingredients", [])
+    # 1. Lấy dữ liệu đặc trưng và kiểm tra Fallback 2
+    display_name = info.get("display_name", label)
     taste = info.get("taste", [])
+    texture = info.get("texture", [])
     style = info.get("style", [])
 
-    # Xử lý trường hợp thiếu dữ liệu trong info
-    if len(ingredients) < 2 or len(taste) < 3 or len(style) < 3:
-         return [f"Món {display_name} có thông tin phong phú về nguyên liệu và hương vị, là một lựa chọn tuyệt vời."]
-
-    # Lấy ngẫu nhiên 2 giá trị từ taste/style (đảm bảo chúng khác nhau nếu cần)
-    random_taste_1 = random.choice(taste)
-    random_taste_2 = random.choice([t for t in taste if t != random_taste_1]) # Đảm bảo khác nhau
-
-    random_style_desc = random.choice(style) # Lấy ngẫu nhiên một mô tả phong cách/sử dụng
-
-    # Lấy 2 thành phần phụ ngẫu nhiên
-    other_ingredients = random.sample(ingredients[1:], 2)
+    all_sensations = taste + texture # Bao gồm cả Vị và Kết cấu
     
+    # Fallback 2: Kiểm tra dữ liệu cốt lõi (Ít nhất 2 mô tả cảm giác và có phong cách)
+    if len(all_sensations) < 2 or not style:
+        return f"Món {display_name} có hương vị và phong cách độc đáo, là một lựa chọn tuyệt vời."
+
+    # 2. Lựa chọn Ngẫu nhiên
+    # Chọn ngẫu nhiên 2 mô tả cảm giác khác nhau
+    sensation_1, sensation_2 = random.sample(all_sensations, k=2) 
+    style_desc = random.choice(style)
+
+    if user_extras:
+        # Lấy 1-3 nguyên liệu ngẫu nhiên để làm văn
+        random_user_extras = ", ".join(random.sample(user_extras, k=min(len(user_extras), random.randint(1, 3))))
+
+    # 4. Templates (Tối ưu hóa và Đa dạng hơn)
     templates = [
-        # Template 1: Tập trung vào một yếu tố ngẫu nhiên
-        f"{display_name} là {random_style_desc}. {ingredients[0]} là linh hồn tạo nên hương vị {random_taste_1} đặc trưng. Sự kết hợp được làm giàu bởi {', '.join(other_ingredients)} mang lại trải nghiệm ẩm thực/thức uống khó quên.",
+        # Template A: Nhấn mạnh Phong cách và Cảm giác
+        (f"Món {display_name} thể hiện đúng tinh hoa {style_desc}. "
+        f"Hương vị này trở nên đặc sắc với thành phần cốt lõi là {random_user_extras} "
+        f"và mang lại cảm giác {sensation_1} khó quên, hòa quyện với {sensation_2}."),
         
-        # Template 2: Trải nghiệm và sự kết hợp ngẫu nhiên
-        f"Thưởng thức {display_name} là một trải nghiệm vị giác phong phú. Điểm đặc sắc là {ingredients[0]} hòa quyện cùng {', '.join(other_ingredients)}, tạo ra một sự cân bằng tuyệt vời giữa cảm giác {random_taste_1} và hương vị {random_taste_2}.",
+        # Template B: Nhấn mạnh Vị giác, Kết cấu và Nguyên liệu (Phù hợp cho mọi loại món)
+        (f"Thưởng thức {display_name} là một trải nghiệm {style_desc} phong phú. "
+        f"Sự cân bằng tuyệt vời giữa vị {sensation_1} và kết cấu {sensation_2} "
+        f"được làm giàu thêm bởi {random_user_extras}."), # Thay đổi vị trí ingredient_clause_t1_t2
         
-        # Template 3: Mô tả Tổng quan và Đánh giá (Sử dụng tất cả các thành phần phụ còn lại)
-        f"Sức hấp dẫn của {display_name} đến từ sự phức hợp của các thành phần. Ngoài {ingredients[0]} là yếu tố cốt lõi, đây còn là sự kết hợp nhuần nhuyễn giữa {', '.join(ingredients[1:])}. Tổng thể mang lại cảm giác {random_taste_1} và là đại diện cho {random_style_desc}."
+        # Template C: Mô tả ngắn gọn, thu hút và Ngữ cảnh (Rất phù hợp cho món nước/tráng miệng)
+        (f"Món {display_name} độc đáo và hấp dẫn tạo nên bởi"
+        f" sự kết hợp giữa các thành phần như {random_user_extras}. Vị {sensation_1} và cảm giác {sensation_2} "
+        f"sẽ chinh phục mọi thực khách."),
+        
+        # Template D: Nhấn mạnh sự phức hợp, Tinh tế và Thành phần
+        (f"Sức hấp dẫn của {display_name} đến từ sự phức hợp tinh tế. "
+        f"Tổng thể mang lại cảm giác {sensation_1} và {sensation_2} khó tả. "
+        f"Là một {style_desc} được tạo nên bởi {random_user_extras},..."),
     ]
     
-    return templates
+    return random.choice(templates)
 
 @app.on_event("startup")
 async def load_resources():
     global processor_cls, model_cls, food_info_norm, food_info
     try:
-        
-        # 1. Load Model Phân loại (Sử dụng đường dẫn cục bộ của bạn)
+        # 1. Load Model Phân loại
         print("\nĐang tải model Phân loại Ảnh Finetuned Food Model...")
         processor_cls = AutoImageProcessor.from_pretrained(MODEL_CLS_NAME)
         model_cls = AutoModelForImageClassification.from_pretrained(MODEL_CLS_NAME)
@@ -403,38 +379,94 @@ async def load_resources():
 
 @app.post("/generate-caption-from-image", 
           response_model=dict, 
-          summary="Phân loại ảnh và sinh ra 3 mô tả món ăn")
-async def generate_caption(top_k: int = 1, file: UploadFile = File(..., description="File ảnh món ăn")):
+          summary="Phân loại ảnh và sinh ra mô tả món ăn")
+async def generate_caption_unified(
+    ingredients: List[str] = Form(..., description="Các thành phần trong món ăn."),
+    file: Optional[UploadFile] = File(None, description="File ảnh món ăn (chỉ cần 1 trong 2: File hoặc URL)"),
+    image_url: Optional[str] = Form(None, description="URL của ảnh món ăn (chỉ cần 1 trong 2: File hoặc URL)")
+):
     
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File tải lên phải là ảnh.")
+    # --- 1. Kiểm tra đầu vào và Tải/Đọc ảnh ---
+    
+    if not file and not image_url:
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp File ảnh hoặc URL ảnh.")
+    
+    if file and image_url:
+        raise HTTPException(status_code=400, detail="Không thể cung cấp đồng thời cả File ảnh và URL ảnh.")
+        
+    image_pil = None
+    
+    # Trường hợp 1: Nhận File tải lên
+    if file:
+        # Kiểm tra loại file
+        if not file.content_type or not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File tải lên phải là ảnh.")
+        
+        try:
+            image_bytes = await file.read()
+            image_pil = Image.open(io.BytesIO(image_bytes))
+        except Exception:
+             raise HTTPException(status_code=400, detail="File tải lên không thể đọc được dưới dạng ảnh.")
+
+    # Trường hợp 2: Nhận URL ảnh
+    elif image_url:
+        try:
+            # Tải ảnh từ URL
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(image_url)
+                response.raise_for_status() 
+            
+            # Kiểm tra Content-Type
+            content_type = response.headers.get("Content-Type", "")
+            if not content_type.startswith("image/"):
+                raise HTTPException(status_code=400, detail="URL không trỏ đến một file ảnh hợp lệ.")
+
+            image_bytes = response.content
+            image_pil = Image.open(io.BytesIO(image_bytes))
+
+        except httpx.InvalidURL:
+            raise HTTPException(status_code=400, detail="URL ảnh không hợp lệ.")
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=400, detail=f"Lỗi khi tải ảnh: {e.response.status_code} - {e.response.reason_phrase}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Lỗi server khi tải ảnh từ URL: {e}")
+            
+    # --- 2. Xử lý logic nghiệp vụ (Phân loại và Sinh mô tả) ---
     
     try:
-        # Đọc ảnh và chuyển sang đối tượng PIL
-        image_bytes = await file.read()
-        image_pil = Image.open(io.BytesIO(image_bytes))
+        # 2. Phân loại ảnh
+        prediction = classify_food(image_pil)
         
-        # 1. Phân loại ảnh
-        predictions = classify_food_topk(image_pil, top_k=top_k)
+        if not prediction:
+            raise HTTPException(status_code=500, detail="Không thể dự đoán món ăn từ ảnh.")
         
-        if not predictions:
-             raise HTTPException(status_code=500, detail="Không thể dự đoán món ăn từ ảnh.")
+        # Xử lý tham số ingredients
+        print("Ingredients received:", ingredients)
+        # 1. Kiểm tra và lấy ra phần tử đầu tiên (Vì nó là ["Thịt heo,Phô mai"])
+        raw_ingredients_str = ingredients[0] if ingredients and isinstance(ingredients, list) else ""
         
-        # 2. Lấy nhãn dự đoán cao nhất
-        best_label = predictions[0]['label']
+        # 2. Tách chuỗi theo dấu phẩy (,) và làm sạch từng phần tử
+        user_extras = [
+            item.strip().lower() 
+            for item in raw_ingredients_str.split(',') 
+            if item.strip()
+        ]
         
-        # 3. Sinh 3 mô tả
-        descriptions = generate_description(best_label)
+        # 3. Sinh mô tả
+        caption = generate_caption(
+            label=prediction, 
+            user_extras=user_extras
+        )
         
         # 4. Trả về kết quả
         return {
             "success": True, 
-            "best_prediction": predictions[0],
-            "top_predictions": predictions,
-            "descriptions": descriptions # Trả về list 3 mô tả
+            "prediction": prediction,
+            "caption": caption
         }
     except HTTPException as h:
         raise h 
     except Exception as e:
-        logger.error(f"Lỗi xử lý request: {e}")
+        # logger.error(f"Lỗi xử lý nghiệp vụ: {e}") 
         raise HTTPException(status_code=500, detail="Lỗi server khi phân loại và sinh mô tả.")
+    
