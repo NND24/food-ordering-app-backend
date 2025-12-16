@@ -14,6 +14,11 @@ const IngredientBatchSchema = new mongoose.Schema(
     status: { type: String, enum: ["active", "expired", "finished"], default: "active" },
     supplierName: { type: String },
     storageLocation: { type: String }, // ví dụ: "Tủ đông A1"
+    inputUnit: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Unit",
+      required: true,
+    },
   },
   { timestamps: true }
 );
