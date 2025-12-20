@@ -19,6 +19,7 @@ const asyncHandler = require("express-async-handler");
 const mongoose = require("mongoose");
 const { VNPay, ignoreLogger, ProductCode, VnpLocale, dateFormat, VerifyReturnUrl } = require("vnpay");
 const { select } = require("firebase-functions/params");
+const User = require("../models/user.model");
 
 function calcLineSubtotal(item) {
   const base = Number(item.price || 0);
@@ -248,7 +249,7 @@ const updateOrderStatus = asyncHandler(async (req, res, next) => {
 
   const validTransitions = {
     taken: ["delivering", "finished", "done"],
-    delivering: ["delivered"],
+    delivering: ["delivered", "done"],
     finished: ["done"],
   };
 
@@ -454,41 +455,58 @@ const getAllOrder = async (req, res) => {
     const { status } = req.query;
 
     if (!storeId) {
-      return res.status(400).json({ success: false, message: "Store ID is required" });
+      return res.status(400).json({
+        success: false,
+        message: "Store ID is required",
+      });
     }
 
     const filter = { storeId };
 
-    // Nếu có status query
     if (status) {
-      const statusArray = status.split(","); // ["completed","delivered","done",...]
-      filter.status = { $in: statusArray };
+      filter.status = { $in: status.split(",") };
     }
 
+    // 1. Lấy orders
     const orders = await Order.find(filter)
       .populate({ path: "store", select: "name avatar" })
       .populate({ path: "user", select: "name email avatar" })
       .populate({
         path: "items",
-        populate: [
-          {
-            path: "dish",
-            select: "name price image description",
-          },
-          {
-            path: "toppings",
-          },
-        ],
-      });
+        populate: [{ path: "dish", select: "name price image description" }, { path: "toppings" }],
+      })
+      .lean(); // ⚠️ QUAN TRỌNG để gắn thêm field
+
+    // 2. Lấy shipping info theo orderIds
+    const orderIds = orders.map((o) => o._id);
+
+    const shippingInfos = await OrderShipInfo.find({
+      orderId: { $in: orderIds },
+    }).lean();
+
+    // 3. Map shippingInfo vào từng order
+    const shippingMap = {};
+    shippingInfos.forEach((si) => {
+      shippingMap[si.orderId.toString()] = si;
+    });
+
+    const result = orders.map((order) => ({
+      ...order,
+      shippingInfo: shippingMap[order._id.toString()] || null,
+    }));
 
     res.setHeader("Cache-Control", "no-store");
     res.status(200).json({
       success: true,
       message: "Orders retrieved successfully",
-      data: orders,
+      data: result,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("getAllOrder error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
@@ -693,6 +711,116 @@ const reOrder = async (req, res) => {
   }
 };
 
+const assignDelivery = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { deliveryType, staffId, delivererName, delivererPhone } = req.body;
+
+    // 1. Validate orderId
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({ message: "orderId không hợp lệ" });
+    }
+
+    // 2. Check order
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Không tìm thấy đơn hàng" });
+    }
+
+    // 3. Validate trạng thái
+    if (!["confirmed", "finished", "delivering"].includes(order.status)) {
+      return res.status(400).json({
+        message: "Không thể chỉ định người giao ở trạng thái hiện tại",
+      });
+    }
+
+    // 4. Validate deliveryType
+    if (!["IN_STORE", "THIRD_PARTY"].includes(deliveryType)) {
+      return res.status(400).json({ message: "deliveryType không hợp lệ" });
+    }
+
+    // 5. Build deliverer
+    let deliverer;
+
+    if (deliveryType === "IN_STORE") {
+      if (!staffId) {
+        return res.status(400).json({ message: "Thiếu staffId" });
+      }
+
+      const staff = await User.findById(staffId);
+      if (!staff) {
+        return res.status(404).json({ message: "Nhân viên không tồn tại" });
+      }
+
+      deliverer = {
+        staffId: staff._id,
+        name: staff.name,
+        phone: staff.phonenumber,
+      };
+    } else {
+      if (!delivererName || !delivererPhone) {
+        return res.status(400).json({
+          message: "Thiếu thông tin người giao hàng bên ngoài",
+        });
+      }
+
+      deliverer = {
+        staffId: null,
+        name: delivererName,
+        phone: delivererPhone,
+      };
+    }
+
+    // 6. Get shipInfo
+    const shipInfo = await OrderShipInfo.findOne({ orderId });
+    if (!shipInfo) {
+      return res.status(404).json({
+        message: "Không tìm thấy thông tin giao hàng",
+      });
+    }
+
+    const isReassign = !!shipInfo.deliverer?.name;
+
+    // 7. Prevent duplicate assign
+    if (
+      shipInfo.deliverer?.staffId?.toString() === deliverer.staffId?.toString() &&
+      shipInfo.deliverer?.phone === deliverer.phone
+    ) {
+      return res.status(400).json({
+        message: "Người giao hàng không có thay đổi",
+      });
+    }
+
+    // 8. Update shipInfo
+    shipInfo.deliveryType = deliveryType;
+    shipInfo.deliverer = deliverer;
+
+    shipInfo.deliveryHistory = shipInfo.deliveryHistory || [];
+    shipInfo.deliveryHistory.push({
+      deliverer,
+      assignedAt: new Date(),
+      assignedBy: req.user?._id || null,
+      type: isReassign ? "REASSIGN" : "ASSIGN",
+    });
+
+    await shipInfo.save();
+
+    // 9. Update order status (only first assign)
+    if (!isReassign && order.status === "confirmed") {
+      order.status = "delivering";
+      await order.save();
+    }
+
+    return res.json({
+      message: isReassign ? "Cập nhật người giao hàng thành công" : "Bàn giao đơn hàng thành công",
+      data: shipInfo,
+    });
+  } catch (error) {
+    console.error("assignDelivery error:", error);
+    return res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
 module.exports = {
   getUserOrder,
   getOrderDetail,
@@ -705,4 +833,5 @@ module.exports = {
   updateOrder,
   getOrderDetailForStore,
   reOrder,
+  assignDelivery,
 };

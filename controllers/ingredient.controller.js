@@ -1,5 +1,7 @@
 const asyncHandler = require("express-async-handler");
 const Ingredient = require("../models/ingredient.model");
+const Dish = require("../models/dish.model");
+const Topping = require("../models/topping.model");
 
 // Tạo nguyên liệu
 const createIngredient = asyncHandler(async (req, res) => {
@@ -86,11 +88,51 @@ const updateIngredient = asyncHandler(async (req, res) => {
 // Xoá nguyên liệu
 const deleteIngredient = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const ingredient = await Ingredient.findByIdAndDelete(id);
+  const { storeId } = req.body;
 
-  if (!ingredient) {
-    return res.status(404).json({ success: false, message: "Ingredient not found" });
+  if (!storeId) {
+    return res.status(400).json({
+      success: false,
+      message: "storeId is required",
+    });
   }
+
+  // 1️⃣ Kiểm tra ingredient tồn tại
+  const ingredient = await Ingredient.findOne({ _id: id, storeId });
+  if (!ingredient) {
+    return res.status(404).json({
+      success: false,
+      message: "Ingredient not found",
+    });
+  }
+
+  // 2️⃣ Kiểm tra dùng trong Dish
+  const usedInDish = await Dish.exists({
+    storeId,
+    "ingredients.ingredient": id,
+  });
+
+  if (usedInDish) {
+    return res.status(400).json({
+      success: false,
+      message: "Cannot delete ingredient because it is used in dishes",
+    });
+  }
+
+  // 3️⃣ Kiểm tra dùng trong Topping
+  const usedInTopping = await Topping.exists({
+    storeId,
+    "ingredients.ingredient": id,
+  });
+
+  if (usedInTopping) {
+    return res.status(400).json({
+      success: false,
+      message: "Cannot delete ingredient because it is used in toppings",
+    });
+  }
+
+  await Ingredient.findByIdAndDelete(id);
 
   res.json({ success: true, message: "Ingredient deleted" });
 });

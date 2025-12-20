@@ -39,6 +39,43 @@ var orderShipInfoSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // ===== Hình thức giao hàng =====
+    deliveryType: {
+      type: String,
+      enum: ["IN_STORE", "THIRD_PARTY"],
+    },
+
+    // ===== Thông tin người giao =====
+    deliverer: {
+      staffId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Staff",
+        default: null,
+      },
+      name: {
+        type: String,
+        trim: true,
+      },
+      phone: {
+        type: String,
+        trim: true,
+      },
+    },
+    deliveryHistory: [
+      {
+        deliverer: {
+          staffId: mongoose.Schema.Types.ObjectId,
+          name: String,
+          phone: String,
+        },
+        assignedAt: Date,
+        assignedBy: mongoose.Schema.Types.ObjectId,
+        type: {
+          type: String,
+          enum: ["ASSIGN", "REASSIGN"],
+        },
+      },
+    ],
   },
   { timestamps: true }
 );
