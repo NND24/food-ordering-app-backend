@@ -324,6 +324,7 @@ def generate_caption(label: str, user_extras: List[str] = None) -> str:
     sensation_1, sensation_2 = random.sample(all_sensations, k=2) 
     style_desc = random.choice(style)
 
+    random_user_extras = "các nguyên liệu tinh túy"
     if user_extras:
         # Lấy 1-3 nguyên liệu ngẫu nhiên để làm văn
         random_user_extras = ", ".join(random.sample(user_extras, k=min(len(user_extras), random.randint(1, 3))))
@@ -381,7 +382,7 @@ async def load_resources():
           response_model=dict, 
           summary="Phân loại ảnh và sinh ra mô tả món ăn")
 async def generate_caption_unified(
-    ingredients: List[str] = Form(..., description="Các thành phần trong món ăn."),
+    ingredients: List[str] = Form([], description="Các thành phần trong món ăn."),
     file: Optional[UploadFile] = File(None, description="File ảnh món ăn (chỉ cần 1 trong 2: File hoặc URL)"),
     image_url: Optional[str] = Form(None, description="URL của ảnh món ăn (chỉ cần 1 trong 2: File hoặc URL)")
 ):
@@ -442,7 +443,8 @@ async def generate_caption_unified(
         
         # Xử lý tham số ingredients
         print("Ingredients received:", ingredients)
-        # 1. Kiểm tra và lấy ra phần tử đầu tiên (Vì nó là ["Thịt heo,Phô mai"])
+        print("Data type of ingredients:", type(ingredients))
+        # 1. Kiểm tra và lấy ra phần tử đầu tiên
         raw_ingredients_str = ingredients[0] if ingredients and isinstance(ingredients, list) else ""
         
         # 2. Tách chuỗi theo dấu phẩy (,) và làm sạch từng phần tử
