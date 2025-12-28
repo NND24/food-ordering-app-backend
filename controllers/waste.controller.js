@@ -8,7 +8,7 @@ const createWaste = asyncHandler(async (req, res) => {
     const { ingredientBatchId, quantity, reason, otherReason } = req.body;
     const staffId = req.user?._id; // lấy từ token auth
 
-    const batch = await IngredientBatch.findById(ingredientBatchId).populate("ingredient");
+    const batch = await IngredientBatch.findById(ingredientBatchId).populate("ingredient").populate("inputUnit");
     if (!batch) {
       return res.status(404).json({ success: false, message: "Batch not found" });
     }
@@ -17,9 +17,25 @@ const createWaste = asyncHandler(async (req, res) => {
       return res.status(400).json({ success: false, message: "Quantity exceeds remaining stock" });
     }
 
+    let quantityInBaseUnit = quantity;
+
+    if (batch.inputUnit) {
+      quantityInBaseUnit = quantity * batch.inputUnit.ratio;
+    }
+
+    if (quantityInBaseUnit > batch.remainingQuantity) {
+      return res.status(400).json({
+        success: false,
+        message: "Quantity exceeds remaining stock",
+      });
+    }
+
     // giảm tồn kho
-    batch.remainingQuantity -= quantity;
-    if (batch.remainingQuantity === 0) batch.status = "finished";
+    batch.remainingQuantity -= quantityInBaseUnit;
+    if (batch.remainingQuantity <= 0) {
+      batch.remainingQuantity = 0;
+      batch.status = "finished";
+    }
     await batch.save();
 
     // tạo waste record
@@ -65,10 +81,15 @@ const getWasteById = asyncHandler(async (req, res) => {
     const waste = await Waste.findById(req.params.id)
       .populate({
         path: "ingredientBatchId",
-        populate: {
-          path: "ingredient",
-          populate: { path: "unit" },
-        },
+        populate: [
+          {
+            path: "ingredient",
+            populate: { path: "unit" },
+          },
+          {
+            path: "inputUnit",
+          },
+        ],
       })
       .populate("staff", "name email");
     if (!waste) return res.status(404).json({ success: false, message: "Waste not found" });
@@ -125,50 +146,59 @@ const getWasteReport = asyncHandler(async (req, res) => {
 
 // Cập nhật waste record
 const updateWaste = asyncHandler(async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { ingredientBatchId, quantity, reason, otherReason } = req.body;
+  const { id } = req.params;
+  const { ingredientBatchId, quantity, reason, otherReason } = req.body;
 
-    const waste = await Waste.findById(id);
-    if (!waste) return res.status(404).json({ success: false, message: "Waste not found" });
+  const waste = await Waste.findById(id);
+  if (!waste) return res.status(404).json({ success: false, message: "Waste not found" });
 
-    // rollback lại tồn kho của batch cũ
-    const oldBatch = await IngredientBatch.findById(waste.ingredientBatchId);
-    if (oldBatch) {
-      oldBatch.remainingQuantity += waste.quantity;
-      if (oldBatch.status === "finished" && oldBatch.remainingQuantity > 0) {
-        oldBatch.status = "active";
-      }
-      await oldBatch.save();
+  // 🔄 rollback batch cũ
+  const oldBatch = await IngredientBatch.findById(waste.ingredientBatchId).populate("inputUnit");
+
+  if (oldBatch) {
+    const rollbackQty = waste.quantity * (oldBatch.inputUnit?.ratio || 1);
+
+    oldBatch.remainingQuantity += rollbackQty;
+
+    if (oldBatch.status === "finished" && oldBatch.remainingQuantity > 0) {
+      oldBatch.status = "active";
     }
 
-    // kiểm tra batch mới
-    const newBatch = await IngredientBatch.findById(ingredientBatchId).populate("ingredient");
-    if (!newBatch) {
-      return res.status(404).json({ success: false, message: "New batch not found" });
-    }
-
-    if (quantity > newBatch.remainingQuantity) {
-      return res.status(400).json({ success: false, message: "Quantity exceeds remaining stock" });
-    }
-
-    // trừ tồn kho batch mới
-    newBatch.remainingQuantity -= quantity;
-    if (newBatch.remainingQuantity === 0) newBatch.status = "finished";
-    await newBatch.save();
-
-    // cập nhật waste
-    waste.ingredientBatchId = ingredientBatchId;
-    waste.quantity = quantity;
-    waste.reason = reason;
-    waste.otherReason = otherReason;
-    waste.date = new Date(); // cập nhật ngày sửa
-    await waste.save();
-
-    res.json({ success: true, data: waste });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    await oldBatch.save();
   }
+
+  // ✅ batch mới
+  const newBatch = await IngredientBatch.findById(ingredientBatchId).populate("inputUnit");
+
+  if (!newBatch) {
+    return res.status(404).json({ success: false, message: "New batch not found" });
+  }
+
+  const quantityInBase = quantity * (newBatch.inputUnit?.ratio || 1);
+
+  if (quantityInBase > newBatch.remainingQuantity) {
+    return res.status(400).json({ success: false, message: "Quantity exceeds remaining stock" });
+  }
+
+  newBatch.remainingQuantity -= quantityInBase;
+
+  if (newBatch.remainingQuantity <= 0) {
+    newBatch.remainingQuantity = 0;
+    newBatch.status = "finished";
+  }
+
+  await newBatch.save();
+
+  // 📝 update waste
+  waste.ingredientBatchId = ingredientBatchId;
+  waste.quantity = quantity;
+  waste.reason = reason;
+  waste.otherReason = otherReason;
+  waste.date = new Date();
+
+  await waste.save();
+
+  res.json({ success: true, data: waste });
 });
 
 module.exports = {

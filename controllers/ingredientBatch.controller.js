@@ -128,7 +128,13 @@ const getBatchesByStore = asyncHandler(async (req, res) => {
   try {
     const { storeId } = req.params;
     const batches = await IngredientBatch.find({ storeId })
-      .populate("ingredient")
+      .populate({
+        path: "ingredient",
+        populate: {
+          path: "unit",
+          select: "name ratio baseUnit",
+        },
+      })
       .populate("inputUnit", "name ratio baseUnit")
       .populate("storeId")
       .sort({ updatedAt: -1 });
