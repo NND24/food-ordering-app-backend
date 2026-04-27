@@ -20,6 +20,7 @@ const {
   registerUserSocket,
 } = require("./utils/socketManager");
 const Notification = require("./models/notification.model");
+const Chat = require("./models/chat.model");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
 
@@ -50,6 +51,8 @@ const ingredientBatchRoute = require("./routes/ingredientBatch.routes");
 const wasteRoute = require("./routes/waste.routes");
 const unitRoute = require("./routes/unit.routes");
 
+const chatRoute = require("./routes/chat.routes");
+const messageRoute = require("./routes/message.routes");
 const adminStoreRoute = require("./routes/adminStore.routes");
 const adminAccountRoute = require("./routes/adminAccount.routes");
 
@@ -128,6 +131,9 @@ app.use("/api/v1/ingredient-batch", ingredientBatchRoute);
 app.use("/api/v1/waste", wasteRoute);
 app.use("/api/v1/unit", unitRoute);
 
+app.use("/api/v1/chat", chatRoute);
+app.use("/api/v1/message", messageRoute);
+
 // Admin route
 app.use("/api/v1/admin/stores", adminStoreRoute);
 app.use("/api/v1/admin/accounts", adminAccountRoute);
@@ -203,6 +209,37 @@ io.on("connection", (socket) => {
     } catch (error) {
       console.error("Lỗi gửi thông báo:", error);
     }
+  });
+
+  // --- CHAT ---
+  socket.on("joinChat", (chatId) => {
+    socket.join(chatId);
+  });
+
+  socket.on("leaveChat", (chatId) => {
+    socket.leave(chatId);
+  });
+
+  socket.on("joinStoreRoom", (storeId) => {
+    socket.join(`store:${storeId}`);
+  });
+
+  socket.on("sendMessage", async (newMessageReceived) => {
+    const chatId = newMessageReceived.id;
+    try {
+      const chat = await Chat.findById(chatId);
+      if (!chat) return;
+
+      io.to(chatId).emit("messageReceived", newMessageReceived);
+
+      if (chat.store) {
+        io.to(`store:${chat.store.toString()}`).emit("storeNewMessage", newMessageReceived);
+      }
+    } catch {}
+  });
+
+  socket.on("deleteMessage", (chatId) => {
+    io.to(chatId).emit("messageDeleted");
   });
 
   // --- NGẮT KẾT NỐI ---

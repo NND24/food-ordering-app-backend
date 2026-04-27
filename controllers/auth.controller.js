@@ -390,20 +390,14 @@ const getRefreshToken = asyncHandler(async (req, res, next) => {
   });
 });
 
-const logout = asyncHandler(async (req, res, next) => {
+const logout = asyncHandler(async (req, res) => {
   const cookie = req.cookies;
-  if (!cookie?.refreshToken)
-    return next(
-      createError(204, {
-        success: false,
-        message: "No refresh token in cookies",
-      })
-    );
 
-  const refreshToken = cookie.refreshToken;
-  const user = await User.findOne({ refreshToken });
-  if (user) {
-    await User.findOneAndUpdate({ refreshToken }, { $set: { refreshToken: null } });
+  if (cookie?.refreshToken) {
+    const user = await User.findOne({ refreshToken: cookie.refreshToken });
+    if (user) {
+      await User.findOneAndUpdate({ refreshToken: cookie.refreshToken }, { $set: { refreshToken: null } });
+    }
   }
 
   res.clearCookie("refreshToken", {

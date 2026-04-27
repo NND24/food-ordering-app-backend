@@ -5,8 +5,8 @@ const connectDB = async () => {
   const connectWithRetry = async () => {
     try {
       await mongoose.connect(process.env.MONGODB_URL, {
-        serverSelectionTimeoutMS: 30000, // tăng timeout tìm MongoDB server
-        connectTimeoutMS: 30000, // tăng timeout kết nối TCP
+        serverSelectionTimeoutMS: 60000, // tăng timeout tìm MongoDB server
+        connectTimeoutMS: 60000, // tăng timeout kết nối TCP
       });
       console.log("MongoDB Connection Succeeded.");
     } catch (error) {

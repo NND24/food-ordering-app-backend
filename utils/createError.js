@@ -1,7 +1,6 @@
 const createError = (status, message) => {
-  const err = new Error();
-  (err.status = status), (err.message = message);
-
+  const err = new Error(typeof message === "string" ? message : message?.message || "An error occurred");
+  err.status = status;
   return err;
 };
 

@@ -18,7 +18,6 @@ const createError = require("../utils/createError");
 const asyncHandler = require("express-async-handler");
 const mongoose = require("mongoose");
 const { VNPay, ignoreLogger, ProductCode, VnpLocale, dateFormat, VerifyReturnUrl } = require("vnpay");
-const { select } = require("firebase-functions/params");
 const User = require("../models/user.model");
 
 function calcLineSubtotal(item) {

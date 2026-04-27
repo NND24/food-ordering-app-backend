@@ -1,28 +1,41 @@
 const User = require("../models/user.model");
 const asyncHandler = require("express-async-handler");
 const createError = require("../utils/createError");
-const { getStorage, ref, uploadBytes, getDownloadURL, deleteObject, getMetadata } = require("firebase/storage");
+const { cloudinary } = require("../config/cloudinary_connection");
+const { Readable } = require("stream");
 
-const uploadFile = asyncHandler(async (file, folderName) => {
-  const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-  const modifiedFileName = folderName + "/" + uniqueSuffix + "-" + file.originalname;
+const FOLDER_MAP = {
+  avatars: "food-ordering-app/avatars",
+  ratings: "food-ordering-app/ratings",
+  messages: "food-ordering-app/messages",
+  dishes: "food-ordering-app/dishes",
+  stores: "food-ordering-app/stores",
+  categories: "food-ordering-app/categories",
+  register: "food-ordering-app/register",
+};
 
-  const storage = getStorage();
-  const storageRef = ref(storage, modifiedFileName);
-  const metadata = { contentType: file.mimetype };
+const getFolder = (type) => FOLDER_MAP[type] || "food-ordering-app/images";
 
-  // Upload file lên Firebase Storage
-  await uploadBytes(storageRef, file.buffer, metadata);
+const uploadToCloudinary = (buffer, folderName) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: folderName, resource_type: "auto" },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve({
+          filePath: result.public_id,
+          url: result.secure_url,
+          createdAt: Date.now(),
+        });
+      }
+    );
 
-  // Lấy URL tải xuống
-  const downloadURL = await getDownloadURL(storageRef);
-
-  return {
-    filePath: modifiedFileName,
-    url: downloadURL,
-    createdAt: Date.now(),
-  };
-});
+    const readable = new Readable();
+    readable.push(buffer);
+    readable.push(null);
+    readable.pipe(uploadStream);
+  });
+};
 
 const uploadAvatarImage = asyncHandler(async (req, res, next) => {
   const userId = req?.user?._id;
@@ -31,12 +44,11 @@ const uploadAvatarImage = asyncHandler(async (req, res, next) => {
     return next(createError(400, "No file uploaded"));
   }
 
-  const uploadedImage = await uploadFile(req.file, "avatars");
+  const uploadedImage = await uploadToCloudinary(req.file.buffer, getFolder("avatars"));
+
   const updateUser = await User.findByIdAndUpdate(
     userId,
-    {
-      avatar: uploadedImage,
-    },
+    { avatar: uploadedImage },
     { new: true }
   ).select("name email phonenumber gender role avatar isGoogleLogin");
 
@@ -52,55 +64,31 @@ const uploadImages = asyncHandler(async (req, res, next) => {
     return next(createError(400, "No files uploaded"));
   }
 
-  const uploadedFileDetails = []; // Lưu trữ thông tin chi tiết các file đã upload
+  const folder = getFolder(req.query.type);
 
-  // Upload từng file và lấy thông tin
-  await Promise.all(
-    req.files.map(async (file) => {
-      const uploadedFile = await uploadFile(file, "images");
-      uploadedFileDetails.push(uploadedFile);
-    })
+  const uploadedFileDetails = await Promise.all(
+    req.files.map((file) => uploadToCloudinary(file.buffer, folder))
   );
 
   res.status(200).json(uploadedFileDetails);
 });
 
-const deleteFileFromFirebase = asyncHandler(async (filePath) => {
-  const storage = getStorage();
-  const decodedFilePath = decodeURIComponent(filePath); // Decode file path
-
-  const fileRef = ref(storage, decodedFilePath);
-
-  try {
-    // Check if the file exists before deleting
-    await getMetadata(fileRef);
-
-    // Delete the file
-    await deleteObject(fileRef);
+const deleteFileFromCloudinary = async (publicId) => {
+  const result = await cloudinary.uploader.destroy(publicId);
+  if (result.result === "ok" || result.result === "not found") {
     return { message: "File deleted successfully" };
-  } catch (error) {
-    console.error("Error during file deletion:", error.message);
-
-    // Handle specific error cases
-    if (error.code === "storage/object-not-found") {
-      return { message: "File does not exist or has already been deleted" };
-    }
-
-    // Rethrow other errors
-    throw new Error(`Failed to delete file: ${error.message}`);
   }
-});
+  throw new Error(`Failed to delete file: ${result.result}`);
+};
 
 const deleteFile = asyncHandler(async (req, res, next) => {
-  const { filePath } = req.body; // Lấy đường dẫn file từ body request
+  const { filePath } = req.body;
 
-  // Kiểm tra xem đường dẫn file có được cung cấp hay không
   if (!filePath) {
     return next(createError(400, "File path is required"));
   }
 
-  // Thực hiện xóa file
-  const result = await deleteFileFromFirebase(filePath);
+  const result = await deleteFileFromCloudinary(filePath);
   res.status(200).json(result);
 });
 
