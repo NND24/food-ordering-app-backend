@@ -24,6 +24,9 @@ const Chat = require("./models/chat.model");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
 
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
+
 // Routes
 const authRoute = require("./routes/auth.routes");
 const customerStoreRoute = require("./routes/customerStore.routes");

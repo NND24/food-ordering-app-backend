@@ -275,9 +275,40 @@ const getDetailDish = async (req, res) => {
   }
 };
 
+const getToppingFromDish = async (req, res) => {
+  try {
+    const { dishId } = req.params;
+
+    const dish = await Dish.findById(dishId).populate({
+      path: "toppingGroups",
+      match: { isActive: true },
+      populate: {
+        path: "toppings",
+        match: { status: { $in: ["ACTIVE", "OUT_OF_STOCK"] } },
+        select: "name price status",
+      },
+    });
+
+    if (!dish) {
+      return res.status(404).json({ success: false, message: "Dish not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: dish.toppingGroups || [],
+    });
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({ success: false, message: "Invalid dish ID format" });
+    }
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getAllStore,
   getStoreInformation,
   getAllDishInStore,
   getDetailDish,
+  getToppingFromDish,
 };
